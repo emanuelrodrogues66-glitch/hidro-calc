@@ -437,38 +437,38 @@ export default function Projeto() {
 
       if (hidrantes && hidrantes.length > 0) {
         if (trechoExistente) {
-          // Trecho identificado: abrir para edição com as peças novas do Revit
-          setTrechoHidranteId(trechoExistente.hidrante_id)
-          setEditTrecho(trechoExistente)
-          setTrechoForm({
-            nome: trechoExistente.nome,
-            tipo_trecho: trechoExistente.tipo_trecho,
-            bitola: trechoExistente.bitola || 50,
-            comprimento_real: Number(d.comprimentoReal) || trechoExistente.comprimento_real,
-            altura_estatica: trechoExistente.altura_estatica,
-            pecas: pecasMapeadas,
-            vazao_trecho: trechoExistente.vazao_trecho,
-            fator_hidrantes: (trechoExistente as any).fator_hidrantes || 1,
-            vazao_trecho_custom: trechoExistente.vazao_trecho_custom || 0,
-            qtd_lances: trechoExistente.qtd_lances || 1,
-            comprimento_por_lance: trechoExistente.comprimento_por_lance || 15,
-            d_interno_mangueira: trechoExistente.d_interno_mangueira || 63,
-            diametro_requinte: trechoExistente.diametro_requinte || 13,
-            k_fator_requinte: trechoExistente.k_fator_requinte || 1.0,
-          })
-          setModalTrecho(true)
-          toast({
-            title: `Revit → Trecho "${trechoExistente.nome}" identificado`,
-            description: `${pecasMapeadas.length} peça(s) importadas. Revise e salve.`,
-          })
+          // Trecho JÁ EXISTE → atualizar peças silenciosamente (sem modal)
+          supabase
+            .from('trechos')
+            .update({
+              pecas: JSON.stringify(pecasMapeadas),
+              comprimento_real: Number(d.comprimentoReal) || trechoExistente.comprimento_real,
+            })
+            .eq('id', trechoExistente.id)
+            .then(({ error }) => {
+              if (error) {
+                toast({
+                  title: `Erro ao atualizar "${trechoExistente.nome}"`,
+                  description: error.message,
+                  variant: 'destructive',
+                })
+              } else {
+                queryClient.invalidateQueries({ queryKey: ['trechos', projetoId] })
+                toast({
+                  title: `✓ "${trechoExistente.nome}" atualizado`,
+                  description: `${pecasMapeadas.length} peça(s) atualizadas automaticamente.`,
+                })
+              }
+            })
         } else {
-          // Novo trecho: abrir no primeiro hidrante para o usuário escolher
+          // NOVO trecho → abrir modal para o usuário escolher hidrante
+          setTrechoForm(revitForm)
           setTrechoHidranteId(hidrantes[0].id)
           setEditTrecho(null)
           setModalTrecho(true)
           toast({
-            title: 'Trecho recebido do Revit',
-            description: `"${revitForm.nome}" — ${pecasMapeadas.length} tipo(s) de peça. Selecione o hidrante e salve.`,
+            title: 'Novo trecho do Revit',
+            description: `"${revitForm.nome}" — ${pecasMapeadas.length} peça(s). Selecione o hidrante e salve.`,
           })
         }
       } else {
@@ -483,13 +483,20 @@ export default function Projeto() {
       if (data.type === 'REVIT_TRECHO') {
         processarTrechoRevit(data.data)
       } else if (data.type === 'REVIT_TRECHOS_LOTE') {
-        // Array de trechos — processar o primeiro imediatamente, enfileirar os demais
         const lista = Array.isArray(data.data) ? data.data : []
         if (lista.length === 0) return
-        processarTrechoRevit(lista[0])
-        // Enfileirar os demais com pequeno intervalo para não sobrescrever o modal
-        lista.slice(1).forEach((t: any, i: number) => {
-          setTimeout(() => processarTrechoRevit(t), (i + 1) * 800)
+        // Separar: existentes (atualização silenciosa) e novos (modal)
+        const existentes = lista.filter((t: any) =>
+          (trechos || []).some(ex => ex.nome.trim().toUpperCase() === (t.nomeTrecho || '').trim().toUpperCase())
+        )
+        const novos = lista.filter((t: any) =>
+          !(trechos || []).some(ex => ex.nome.trim().toUpperCase() === (t.nomeTrecho || '').trim().toUpperCase())
+        )
+        // Existentes: processar todos silenciosamente de uma vez
+        existentes.forEach((t: any) => processarTrechoRevit(t))
+        // Novos: abrir modal um a um com intervalo
+        novos.forEach((t: any, i: number) => {
+          setTimeout(() => processarTrechoRevit(t), i * 600)
         })
       }
     }
@@ -510,9 +517,15 @@ export default function Projeto() {
       try {
         const lista = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr
         if (!Array.isArray(lista) || lista.length === 0) return
-        processarTrechoRevit(lista[0])
-        lista.slice(1).forEach((t: any, i: number) => {
-          setTimeout(() => processarTrechoRevit(t), (i + 1) * 800)
+        const existentes = lista.filter((t: any) =>
+          (trechos || []).some(ex => ex.nome.trim().toUpperCase() === (t.nomeTrecho || '').trim().toUpperCase())
+        )
+        const novos = lista.filter((t: any) =>
+          !(trechos || []).some(ex => ex.nome.trim().toUpperCase() === (t.nomeTrecho || '').trim().toUpperCase())
+        )
+        existentes.forEach((t: any) => processarTrechoRevit(t))
+        novos.forEach((t: any, i: number) => {
+          setTimeout(() => processarTrechoRevit(t), i * 600)
         })
       } catch (e) {
         console.error('Erro ao parsear trechos em lote do Revit:', e)
