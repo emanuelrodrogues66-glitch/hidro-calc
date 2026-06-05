@@ -7,7 +7,7 @@ interface ProtectedRouteProps {
   adminOnly?: boolean
 }
 
-const ADMIN_EMAILS = ['admin@bimsafecalc.com', 'demo@admin.com']
+const ADMIN_EMAILS = ['emanuelrodrogues66@gmail.com', 'admin@bimsafecalc.com']
 
 export function ProtectedRoute({ children, adminOnly = false }: ProtectedRouteProps) {
   const { user, loading } = useAuth()
