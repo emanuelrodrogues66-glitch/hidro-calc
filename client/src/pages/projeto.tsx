@@ -479,16 +479,23 @@ export default function Projeto() {
     // Canal 1: window.postMessage (funciona quando app está em aba normal)
     const handler = (evt: MessageEvent) => {
       if (!evt.data) return
-      // Aceitar de qualquer origem (WebView2 envia de null/about:blank)
       const data = evt.data
       if (data.type === 'REVIT_TRECHO') {
         processarTrechoRevit(data.data)
+      } else if (data.type === 'REVIT_TRECHOS_LOTE') {
+        // Array de trechos — processar o primeiro imediatamente, enfileirar os demais
+        const lista = Array.isArray(data.data) ? data.data : []
+        if (lista.length === 0) return
+        processarTrechoRevit(lista[0])
+        // Enfileirar os demais com pequeno intervalo para não sobrescrever o modal
+        lista.slice(1).forEach((t: any, i: number) => {
+          setTimeout(() => processarTrechoRevit(t), (i + 1) * 800)
+        })
       }
     }
     window.addEventListener('message', handler)
 
-    // Canal 2: função global — WebView2 chama window.__revitTrecho__(json)
-    // mais confiável dentro do contexto do WebView2
+    // Canal 2a: trecho único
     ;(window as any).__revitTrecho__ = (jsonStr: string) => {
       try {
         const d = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr
@@ -498,9 +505,24 @@ export default function Projeto() {
       }
     }
 
+    // Canal 2b: lote de trechos
+    ;(window as any).__revitTrechosLote__ = (jsonStr: string) => {
+      try {
+        const lista = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr
+        if (!Array.isArray(lista) || lista.length === 0) return
+        processarTrechoRevit(lista[0])
+        lista.slice(1).forEach((t: any, i: number) => {
+          setTimeout(() => processarTrechoRevit(t), (i + 1) * 800)
+        })
+      } catch (e) {
+        console.error('Erro ao parsear trechos em lote do Revit:', e)
+      }
+    }
+
     return () => {
       window.removeEventListener('message', handler)
       delete (window as any).__revitTrecho__
+      delete (window as any).__revitTrechosLote__
     }
   }, [hidrantes])
 
