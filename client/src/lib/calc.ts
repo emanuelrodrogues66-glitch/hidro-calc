@@ -303,7 +303,7 @@ function extrairDN(tamanho: string): number {
  * Mapeia o nome da família Revit para o tipo de peça na tabela C.E.
  * Retorna null se não reconhecido ou deve ser ignorado
  */
-function mapearFamiliaParaTipo(familia: string, tamanho: string): string | null {
+export function mapearFamiliaParaTipo(familia: string, tamanho: string): string | null {
   const f = familia.toUpperCase()
   const t = tamanho.toUpperCase()
 

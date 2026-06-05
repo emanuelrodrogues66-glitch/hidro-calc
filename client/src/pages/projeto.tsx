@@ -3,7 +3,7 @@ import { useParams, useLocation } from 'wouter'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth-context'
-import { calcularResultados, calcCE, calcCETotal, parsearCSVRevit, TIPOS_PECAS, DNS_DISPONIVEIS, type Hidrante, type Trecho, type Peca } from '@/lib/calc'
+import { calcularResultados, calcCE, calcCETotal, parsearCSVRevit, mapearFamiliaParaTipo, TIPOS_PECAS, DNS_DISPONIVEIS, type Hidrante, type Trecho, type Peca } from '@/lib/calc'
 import { LogoIcon } from '@/components/logo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -300,28 +300,21 @@ export default function Projeto() {
 
   // ── Listener Revit (REVIT_TRECHO) ────────────────────────────────────────
   useEffect(() => {
-    const handler = (evt: MessageEvent) => {
-      if (!evt.data || evt.data.type !== 'REVIT_TRECHO') return
-      const d = evt.data.data
+    // Função central que processa o payload vindo do Revit
+    const processarTrechoRevit = (d: any) => {
       if (!d) return
 
-      // Mapear peças vindas do Revit para o formato interno { tipo, dn, quantidade }
+      // Mapear peças usando a mesma função do parser CSV
       const pecasMapeadas: Peca[] = (d.pecas || []).map((p: any) => {
-        // Tentar mapear o nome da família para um tipo interno
-        const nomeFam = (p.familiaOriginal || '').toLowerCase()
-        let tipoEncontrado = TIPOS_PECAS.find(tp =>
-          nomeFam.includes(tp.nome.toLowerCase()) ||
-          nomeFam.includes(tp.tipo.toLowerCase())
-        )
-        if (!tipoEncontrado) {
-          // fallback: usar nome original como tipo
-          tipoEncontrado = TIPOS_PECAS[0]
-        }
+        const familia = p.familiaOriginal || ''
+        const tamanho = p.tamanho || ''
+        // usar mapearFamiliaParaTipo exportada de calc.ts
+        const tipoMapeado = mapearFamiliaParaTipo(familia, tamanho)
+        const tipo = tipoMapeado || familia || TIPOS_PECAS[0]
         const dn = Number(p.diametroNominal) || 50
-        return { tipo: tipoEncontrado.tipo, dn, quantidade: Number(p.quantidade) || 1 }
+        return { tipo, dn, quantidade: Number(p.quantidade) || 1 }
       })
 
-      // Preencher o form do trecho com os dados do Revit
       const revitForm = {
         ...TRECHO_VAZIO,
         nome: d.nomeTrecho || 'Trecho Revit',
@@ -332,22 +325,45 @@ export default function Projeto() {
       }
       setTrechoForm(revitForm)
 
-      // Abrir modal no primeiro hidrante disponível (ou deixar usuário escolher)
       if (hidrantes && hidrantes.length > 0) {
-        const primH = hidrantes[0]
-        setTrechoHidranteId(primH.id)
+        setTrechoHidranteId(hidrantes[0].id)
         setEditTrecho(null)
         setModalTrecho(true)
         toast({
-          title: '🔥 Trecho recebido do Revit',
-          description: `"${revitForm.nome}" — ${pecasMapeadas.length} peças importadas. Selecione o hidrante e confirme.`,
+          title: 'Trecho recebido do Revit',
+          description: `"${revitForm.nome}" — ${pecasMapeadas.length} tipo(s) de peça importados. Confirme o hidrante e salve.`,
         })
       } else {
         toast({ title: 'Nenhum hidrante', description: 'Crie um hidrante antes de importar do Revit.', variant: 'destructive' })
       }
     }
+
+    // Canal 1: window.postMessage (funciona quando app está em aba normal)
+    const handler = (evt: MessageEvent) => {
+      if (!evt.data) return
+      // Aceitar de qualquer origem (WebView2 envia de null/about:blank)
+      const data = evt.data
+      if (data.type === 'REVIT_TRECHO') {
+        processarTrechoRevit(data.data)
+      }
+    }
     window.addEventListener('message', handler)
-    return () => window.removeEventListener('message', handler)
+
+    // Canal 2: função global — WebView2 chama window.__revitTrecho__(json)
+    // mais confiável dentro do contexto do WebView2
+    ;(window as any).__revitTrecho__ = (jsonStr: string) => {
+      try {
+        const d = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr
+        processarTrechoRevit(d)
+      } catch (e) {
+        console.error('Erro ao parsear trecho do Revit:', e)
+      }
+    }
+
+    return () => {
+      window.removeEventListener('message', handler)
+      delete (window as any).__revitTrecho__
+    }
   }, [hidrantes])
 
   // ── Helpers ────────────────────────────────────────────────────────────────
