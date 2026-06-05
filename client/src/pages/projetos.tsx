@@ -235,6 +235,7 @@ export default function Projetos() {
         ...resto,
         nome: `${projeto.nome} (cópia)`,
         user_id: user!.id,
+        criado_em: new Date().toISOString(),
       })
       if (error) throw error
     },
