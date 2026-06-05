@@ -166,12 +166,6 @@ export default function Projeto() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
-  // Refs para acesso sempre atualizado dentro de closures (listener Revit)
-  const trechosRef = useRef<typeof trechos>(trechos)
-  const hidrantesRef = useRef<typeof hidrantes>(hidrantes)
-  useEffect(() => { trechosRef.current = trechos }, [trechos])
-  useEffect(() => { hidrantesRef.current = hidrantes }, [hidrantes])
-
   // dnd-kit sensors
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -247,6 +241,12 @@ export default function Projeto() {
     enabled: !!hidrantes && hidrantes.length > 0,
   })
 
+
+  // Refs para acesso sempre atualizado dentro de closures (listener Revit)
+  const trechosRef = useRef<typeof trechos>(undefined)
+  const hidrantesRef = useRef<typeof hidrantes>(undefined)
+  useEffect(() => { trechosRef.current = trechos }, [trechos])
+  useEffect(() => { hidrantesRef.current = hidrantes }, [hidrantes])
   // ── Mutations ──────────────────────────────────────────────────────────────
 
   const salvarHidrante = useMutation({
