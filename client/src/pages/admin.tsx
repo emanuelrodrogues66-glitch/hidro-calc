@@ -26,6 +26,7 @@ type Assinatura = {
   data_expiracao?: string
   limite_projetos?: number
   hotmart_subscription_id?: string
+  email?: string
 }
 
 const PLANOS = ['gratuito', 'starter', 'pro']
@@ -55,12 +56,32 @@ export default function Admin() {
   const { data: assinaturas, isLoading: loadingAss, refetch: refetchAss } = useQuery<Assinatura[]>({
     queryKey: ['admin-assinaturas'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // Busca assinaturas
+      const { data: assData, error: assError } = await supabase
         .from('assinaturas')
         .select('*')
         .order('id', { ascending: false })
-      if (error) throw error
-      return data ?? []
+      if (assError) throw assError
+
+      // Busca emails via Edge Function (requer admin)
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        const SUPABASE_URL = 'https://nynoqixlyemicmnulbbc.supabase.co'
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im55bm9xaXhseWVtaWNtbnVsYmJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0MjUwNTgsImV4cCI6MjA5NjAwMTA1OH0.I_L8o618Bt2VcwGn_OB362dDMl93O7YC3hfldgJCQIA'
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-list-users`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'apikey': SUPABASE_ANON_KEY,
+          }
+        })
+        const json = await res.json()
+        const emailMap: Record<string, string> = {}
+        json.users?.forEach((u: any) => { emailMap[u.id] = u.email })
+        return (assData ?? []).map(a => ({ ...a, email: emailMap[a.user_id] ?? '' }))
+      } catch {
+        return assData ?? []
+      }
     },
   })
 
@@ -158,6 +179,7 @@ export default function Admin() {
     const q = busca.toLowerCase()
     return (
       a.user_id?.toLowerCase().includes(q) ||
+      a.email?.toLowerCase().includes(q) ||
       a.plano?.toLowerCase().includes(q) ||
       a.status?.toLowerCase().includes(q)
     )
@@ -258,7 +280,7 @@ export default function Admin() {
                 <div className="relative">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                   <Input
-                    placeholder="Buscar user ID, plano..."
+                    placeholder="Buscar email, plano..."
                     value={busca}
                     onChange={e => setBusca(e.target.value)}
                     className="pl-8 h-8 text-xs w-52"
@@ -283,7 +305,7 @@ export default function Admin() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b bg-muted/40">
-                      <th className="text-left py-2.5 px-4 text-xs font-semibold text-muted-foreground">User ID</th>
+                      <th className="text-left py-2.5 px-4 text-xs font-semibold text-muted-foreground">Email</th>
                       <th className="text-left py-2.5 px-4 text-xs font-semibold text-muted-foreground">Plano</th>
                       <th className="text-left py-2.5 px-4 text-xs font-semibold text-muted-foreground">Status</th>
                       <th className="text-center py-2.5 px-4 text-xs font-semibold text-muted-foreground">Projetos</th>
@@ -295,8 +317,12 @@ export default function Admin() {
                   <tbody>
                     {assinaturasFiltradas.map(a => (
                       <tr key={a.id} className="border-b border-border/40 hover:bg-muted/20 transition-colors">
-                        <td className="py-2.5 px-4 font-mono text-[11px] text-muted-foreground max-w-[180px] truncate">
-                          {a.user_id}
+                        <td className="py-2.5 px-4 max-w-[220px]">
+                          {a.email ? (
+                            <span className="text-xs font-medium text-foreground truncate block">{a.email}</span>
+                          ) : (
+                            <span className="font-mono text-[10px] text-muted-foreground truncate block" title={a.user_id}>{a.user_id.slice(0, 16)}…</span>
+                          )}
                         </td>
                         <td className="py-2.5 px-4">
                           <span className={`text-[11px] px-2 py-0.5 rounded-full border font-semibold capitalize ${planoColor(a.plano)}`}>
@@ -394,8 +420,11 @@ export default function Admin() {
             <DialogTitle>Editar Assinatura</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="p-2 bg-muted rounded text-[11px] font-mono text-muted-foreground break-all">
-              {editAssinatura?.user_id}
+            <div className="p-2 bg-muted rounded space-y-0.5">
+              {editAssinatura?.email && (
+                <p className="text-xs font-medium text-foreground">{editAssinatura.email}</p>
+              )}
+              <p className="text-[10px] font-mono text-muted-foreground break-all">{editAssinatura?.user_id}</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -517,7 +546,7 @@ export default function Admin() {
           <AlertDialogHeader>
             <AlertDialogTitle>Remover assinatura?</AlertDialogTitle>
             <AlertDialogDescription>
-              Isso removerá a assinatura do usuário <code className="text-xs">{confirmarExcluir?.user_id?.slice(0, 16)}...</code>. O usuário voltará ao plano gratuito.
+              Isso removerá a assinatura do usuário <code className="text-xs">{confirmarExcluir?.email || confirmarExcluir?.user_id?.slice(0, 16) + '...'}</code>. O usuário voltará ao plano gratuito.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
