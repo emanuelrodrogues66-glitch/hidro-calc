@@ -448,7 +448,15 @@ export default function Projeto() {
         return { atualizado: trechoExistente.nome }
       } else {
         // Trecho novo → criar automaticamente no primeiro hidrante
-        const trechosDoHidrante = (trechosRef.current || []).filter(t => t.hidrante_id === hidrantesRef.current![0].id)
+        const hidranteId = hidrantesRef.current![0].id
+        // Buscar ordem máxima atual no banco para evitar colisão em inserts em série
+        const { data: ordemData } = await supabase
+          .from('trechos')
+          .select('ordem')
+          .eq('hidrante_id', hidranteId)
+          .order('ordem', { ascending: false })
+          .limit(1)
+        const proximaOrdem = ((ordemData?.[0]?.ordem) || 0) + 1
         const payload = {
           nome: d.nomeTrecho || 'Trecho Revit',
           tipo_trecho: 'normal' as const,
@@ -464,9 +472,9 @@ export default function Projeto() {
           d_interno_mangueira: null,
           diametro_requinte: null,
           k_fator_requinte: null,
-          hidrante_id: hidrantesRef.current![0].id,
+          hidrante_id: hidranteId,
           user_id: user!.id,
-          ordem: trechosDoHidrante.length + 1,
+          ordem: proximaOrdem,
           criado_em: new Date().toISOString(),
         }
         const { error } = await supabase.from('trechos').insert(payload)
@@ -486,18 +494,23 @@ export default function Projeto() {
       } else if (data.type === 'REVIT_TRECHOS_LOTE') {
         const lista = Array.isArray(data.data) ? data.data : []
         if (lista.length === 0) return
-        Promise.all(lista.map((t: any) => processarTrechoRevit(t))).then(resultados => {
+        ;(async () => {
+          const resultados: any[] = []
+          for (const t of lista) {
+            const r = await processarTrechoRevit(t)
+            resultados.push(r)
+          }
           queryClient.invalidateQueries({ queryKey: ['trechos', projetoId] })
-          const atualizados = (resultados as any[]).filter((r: any) => r?.atualizado).map((r: any) => r.atualizado)
-          const criados = (resultados as any[]).filter((r: any) => r?.criado).map((r: any) => r.criado)
+          const atualizados = resultados.filter(r => r?.atualizado).length
+          const criados = resultados.filter(r => r?.criado).length
           const partes = []
-          if (atualizados.length) partes.push(`${atualizados.length} atualizado(s)`)
-          if (criados.length) partes.push(`${criados.length} criado(s)`)
+          if (atualizados) partes.push(`${atualizados} atualizado(s)`)
+          if (criados) partes.push(`${criados} criado(s)`)
           toast({
             title: `Revit → ${lista.length} trecho(s) importados`,
             description: partes.join(' · ') || 'Sem alterações',
           })
-        })
+        })()
       }
     }
     window.addEventListener('message', handler)
@@ -521,15 +534,20 @@ export default function Projeto() {
       try {
         const lista = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr
         if (!Array.isArray(lista) || lista.length === 0) return
-        Promise.all(lista.map((t: any) => processarTrechoRevit(t))).then(resultados => {
+        ;(async () => {
+          const resultados: any[] = []
+          for (const t of lista) {
+            const r = await processarTrechoRevit(t)
+            resultados.push(r)
+          }
           queryClient.invalidateQueries({ queryKey: ['trechos', projetoId] })
-          const atualizados = resultados.filter((r: any) => r?.atualizado).length
-          const criados = resultados.filter((r: any) => r?.criado).length
+          const atualizados = resultados.filter(r => r?.atualizado).length
+          const criados = resultados.filter(r => r?.criado).length
           const partes = []
           if (atualizados) partes.push(`${atualizados} atualizado(s)`)
           if (criados) partes.push(`${criados} criado(s)`)
           toast({ title: `Revit → ${lista.length} trecho(s) importados`, description: partes.join(' · ') || 'Sem alterações' })
-        })
+        })()
       } catch (e) {
         console.error('Erro ao parsear trechos em lote do Revit:', e)
       }
