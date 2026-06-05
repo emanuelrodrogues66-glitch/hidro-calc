@@ -67,7 +67,7 @@ const addToRemoveQueue = (toastId: string) => {
     toastTimeouts.delete(toastId)
     dispatch({
       type: "REMOVE_TOAST",
-      toastId: toastId,
+      toastId,
     })
   }, TOAST_REMOVE_DELAY)
 
@@ -177,7 +177,6 @@ function useToast() {
 
   React.useEffect(() => {
     listeners.push(setState)
-
     return () => {
       const index = listeners.indexOf(setState)
       if (index > -1) {
