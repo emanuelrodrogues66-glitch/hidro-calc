@@ -255,9 +255,16 @@ export function calcularResultados(
       pressao_acumulada: pressaoAcumulada,
     })
 
-    // Propagar vazão: sempre atualiza vazaoBase com a vazão calculada
-    // (trechos subsequentes com 'herda' pegam a vazão deste)
-    vazaoBase = vazao
+    // Propagar vazão:
+    // - 'fator': NÃO propaga — próximo trecho 'herda' volta à vazao_minima do hidrante
+    // - 'custom': propaga a vazão customizada para os próximos trechos
+    // - 'herda': mantém vazaoBase atual
+    if (trecho.vazao_trecho === 'custom') {
+      vazaoBase = vazao
+    } else if (trecho.vazao_trecho === 'herda') {
+      // mantém vazaoBase como está
+    }
+    // 'fator': vazaoBase não muda — próximos trechos 'herda' continuam com vazao_minima
   }
 
   return linhas
