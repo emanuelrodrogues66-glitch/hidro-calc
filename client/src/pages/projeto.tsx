@@ -3,7 +3,7 @@ import { useParams, useLocation } from 'wouter'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth-context'
-import { calcularResultados, calcCE, parsearCSVRevit, TIPOS_PECAS, DNS_DISPONIVEIS, type Hidrante, type Trecho, type Peca } from '@/lib/calc'
+import { calcularResultados, calcCE, calcCETotal, parsearCSVRevit, TIPOS_PECAS, DNS_DISPONIVEIS, type Hidrante, type Trecho, type Peca } from '@/lib/calc'
 import { LogoIcon } from '@/components/logo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -1405,38 +1405,56 @@ export default function Projeto() {
               {/* Lista de peças adicionadas */}
               {trechoForm.pecas.length > 0 && (
                 <div className="mb-3 border rounded-md overflow-hidden">
-                  {trechoForm.pecas.map((p, idx) => (
-                    <div key={p.tipo} className={`flex items-center gap-2 px-2 py-1.5 text-xs ${idx % 2 === 0 ? 'bg-muted/20' : ''}`}>
-                      <span className="flex-1 text-foreground font-medium truncate">{p.tipo}</span>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <Button
-                          variant="ghost" size="icon" type="button"
-                          className="h-5 w-5 rounded-full"
-                          onClick={() => updatePeca(p.tipo, p.quantidade - 1)}
-                        >
-                          <span className="text-base leading-none font-bold">−</span>
-                        </Button>
-                        <span className="w-7 text-center font-bold text-primary">{p.quantidade}</span>
-                        <Button
-                          variant="ghost" size="icon" type="button"
-                          className="h-5 w-5 rounded-full"
-                          onClick={() => updatePeca(p.tipo, p.quantidade + 1)}
-                        >
-                          <span className="text-base leading-none font-bold">+</span>
-                        </Button>
-                        <Button
-                          variant="ghost" size="icon" type="button"
-                          className="h-5 w-5 text-destructive hover:text-destructive ml-1"
-                          onClick={() => updatePeca(p.tipo, 0)}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
+                  {/* Cabeçalho */}
+                  <div className="flex items-center gap-2 px-2 py-1 text-[10px] font-semibold text-muted-foreground bg-muted/40 border-b">
+                    <span className="flex-1">Peça</span>
+                    <span className="w-16 text-right">C.E.unit(m)</span>
+                    <span className="w-16 text-right">C.E.tot(m)</span>
+                    <span className="w-24"></span>
+                  </div>
+                  {trechoForm.pecas.map((p, idx) => {
+                    const ceUnit = calcCE(p.tipo, trechoForm.bitola)
+                    const ceTotal = ceUnit * p.quantidade
+                    return (
+                      <div key={p.tipo} className={`flex items-center gap-2 px-2 py-1.5 text-xs ${idx % 2 === 0 ? 'bg-muted/20' : ''}`}>
+                        <span className="flex-1 text-foreground font-medium truncate">{p.tipo}</span>
+                        <span className="w-16 text-right text-muted-foreground font-mono text-[11px]">
+                          {ceUnit > 0 ? ceUnit.toFixed(2) : <span className="text-amber-500 text-[10px]">N/D</span>}
+                        </span>
+                        <span className="w-16 text-right text-primary font-mono font-semibold text-[11px]">
+                          {ceTotal > 0 ? ceTotal.toFixed(2) : '—'}
+                        </span>
+                        <div className="flex items-center gap-1 shrink-0 w-24 justify-end">
+                          <Button variant="ghost" size="icon" type="button" className="h-5 w-5 rounded-full"
+                            onClick={() => updatePeca(p.tipo, p.quantidade - 1)}>
+                            <span className="text-base leading-none font-bold">−</span>
+                          </Button>
+                          <span className="w-7 text-center font-bold text-primary">{p.quantidade}</span>
+                          <Button variant="ghost" size="icon" type="button" className="h-5 w-5 rounded-full"
+                            onClick={() => updatePeca(p.tipo, p.quantidade + 1)}>
+                            <span className="text-base leading-none font-bold">+</span>
+                          </Button>
+                          <Button variant="ghost" size="icon" type="button"
+                            className="h-5 w-5 text-destructive hover:text-destructive ml-1"
+                            onClick={() => updatePeca(p.tipo, 0)}>
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
+                  {/* Total C.E. */}
+                  <div className="flex items-center gap-2 px-2 py-1.5 text-xs border-t bg-muted/40 font-semibold">
+                    <span className="flex-1 text-muted-foreground">TOTAL C.E.</span>
+                    <span className="w-16 text-right"></span>
+                    <span className="w-16 text-right text-primary font-mono">
+                      {calcCETotal(trechoForm.pecas, trechoForm.bitola).toFixed(4)} m
+                    </span>
+                    <span className="w-24"></span>
+                  </div>
                 </div>
               )}
-              {/* Select para adicionar peça */}
+              {/* Select para adicionar peça com prévia C.E. */}
               <Select
                 value=""
                 onValueChange={(tipo) => { if (tipo) addPeca(tipo) }}
@@ -1444,17 +1462,28 @@ export default function Projeto() {
                 <SelectTrigger className="h-8 text-xs">
                   <SelectValue placeholder="+ Adicionar peça / conexão..." />
                 </SelectTrigger>
-                <SelectContent className="max-h-64">
-                  {TIPOS_PECAS.map(tipo => (
-                    <SelectItem key={tipo} value={tipo} className="text-xs">
-                      {tipo}
-                      {trechoForm.pecas.find(p => p.tipo === tipo) && (
-                        <span className="ml-2 text-primary font-bold">
-                          ✓ {trechoForm.pecas.find(p => p.tipo === tipo)?.quantidade}×
-                        </span>
-                      )}
-                    </SelectItem>
-                  ))}
+                <SelectContent className="max-h-72">
+                  <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground flex justify-between border-b mb-1 sticky top-0 bg-popover">
+                    <span>Peça / Conexão</span>
+                    <span>C.E. p/ DN {trechoForm.bitola} (m)</span>
+                  </div>
+                  {TIPOS_PECAS.map(tipo => {
+                    const ce = calcCE(tipo, trechoForm.bitola)
+                    const jaAdicionada = trechoForm.pecas.find(p => p.tipo === tipo)
+                    return (
+                      <SelectItem key={tipo} value={tipo} className="text-xs">
+                        <div className="flex items-center justify-between gap-4 w-full">
+                          <span className={jaAdicionada ? 'text-primary font-semibold' : ''}>
+                            {jaAdicionada ? '✓ ' : ''}{tipo}
+                            {jaAdicionada && <span className="ml-1 text-[10px] opacity-70">({jaAdicionada.quantidade}×)</span>}
+                          </span>
+                          <span className="text-[10px] font-mono text-muted-foreground shrink-0 ml-2">
+                            {ce > 0 ? `${ce.toFixed(2)} m` : '—'}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    )
+                  })}
                 </SelectContent>
               </Select>
             </div>
