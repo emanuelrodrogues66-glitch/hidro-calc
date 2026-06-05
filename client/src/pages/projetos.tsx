@@ -148,13 +148,14 @@ export default function Projetos() {
       const payload: any = {
         nome: data.nome,
         descricao: data.descricao,
-        norma: data.norma,
+        norma: data.norma === 'Outra (especificar)' ? (data.norma_custom || 'Outra') : data.norma,
         tipo_sistema: data.tipo_sistema,
         resp_nome: data.resp_nome,
         resp_crea: data.resp_crea,
         cliente_nome: data.cliente_nome,
         cliente_contato: data.cliente_contato,
         user_id: user!.id,
+        criado_em: new Date().toISOString(),
       }
       if (data.tipo_sistema === 'PERSONALIZADO') {
         payload.tipo_sistema_nome_custom = data.tipo_sistema_nome_custom
