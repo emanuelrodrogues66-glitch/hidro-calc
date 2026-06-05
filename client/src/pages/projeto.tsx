@@ -1,4 +1,21 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { useParams, useLocation } from 'wouter'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
@@ -19,7 +36,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { useToast } from '@/hooks/use-toast'
-import { ArrowLeft, Plus, Pencil, Trash2, Copy, Download, FileText, Droplets, Flame, Upload } from 'lucide-react'
+import { ArrowLeft, Plus, Pencil, Trash2, Copy, Download, FileText, Droplets, Flame, Upload, GripVertical } from 'lucide-react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
@@ -82,6 +99,63 @@ const TRECHO_VAZIO = {
   k_fator_requinte: 1.0,
 }
 
+// ─── SortableTrechoRow ──────────────────────────────────────────────────────
+
+function SortableTrechoRow({
+  trecho,
+  onEdit,
+  onDelete,
+}: {
+  trecho: any
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: trecho.id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    background: isDragging ? 'hsl(var(--muted))' : undefined,
+  }
+  return (
+    <tr ref={setNodeRef} style={style} className="border-b border-border/50 hover:bg-muted/30">
+      <td className="py-1.5 pl-2 pr-1 w-6">
+        <button {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground">
+          <GripVertical className="h-3.5 w-3.5" />
+        </button>
+      </td>
+      <td className="py-1.5 pr-3 font-medium">{trecho.nome}</td>
+      <td className="py-1.5 pr-3">
+        <span className="text-[10px] bg-secondary text-secondary-foreground rounded px-1.5 py-0.5">{trecho.tipo_trecho}</span>
+      </td>
+      <td className="py-1.5 pr-3 text-right">{trecho.bitola}</td>
+      <td className="py-1.5 pr-3 text-right">{trecho.comprimento_real}</td>
+      <td className="py-1.5 pr-3 text-right">{trecho.altura_estatica}</td>
+      <td className="py-1.5 pr-3 text-right">
+        {trecho.vazao_trecho === 'fator'
+          ? <span className="text-blue-600 font-medium">{(trecho as any).fator_hidrantes || 1}× Q</span>
+          : trecho.vazao_trecho === 'custom'
+            ? <span className="text-amber-600 font-medium">{trecho.vazao_trecho_custom} l/min</span>
+            : <span className="text-muted-foreground">1× Q</span>
+        }
+      </td>
+      <td className="py-1.5 pr-3 text-muted-foreground">
+        {trecho.pecas?.length > 0 ? `${trecho.pecas.length} tipo(s)` : '—'}
+      </td>
+      <td className="py-1.5 text-right">
+        <div className="flex gap-1 justify-end">
+          <button className="h-6 w-6 flex items-center justify-center rounded hover:bg-muted" onClick={onEdit}>
+            <Pencil className="h-3 w-3" />
+          </button>
+          <button className="h-6 w-6 flex items-center justify-center rounded hover:bg-muted text-destructive" onClick={onDelete}>
+            <Trash2 className="h-3 w-3" />
+          </button>
+        </div>
+      </td>
+    </tr>
+  )
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function Projeto() {
@@ -90,6 +164,12 @@ export default function Projeto() {
   const { user } = useAuth()
   const { toast } = useToast()
   const queryClient = useQueryClient()
+
+  // dnd-kit sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
 
   const projetoId = parseInt(id!)
 
@@ -298,6 +378,29 @@ export default function Projeto() {
     },
   })
 
+
+  // ── Reordenar Trechos (drag & drop) ──────────────────────────────────────
+  const handleDragEnd = useCallback(async (event: DragEndEvent, hidranteId: number) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const trechosDo = (trechos || []).filter(t => t.hidrante_id === hidranteId).sort((a, b) => a.ordem - b.ordem)
+    const oldIndex = trechosDo.findIndex(t => t.id === active.id)
+    const newIndex = trechosDo.findIndex(t => t.id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+    const reordenados = arrayMove(trechosDo, oldIndex, newIndex)
+    queryClient.setQueryData(['trechos', projetoId], (old: any[]) => {
+      if (!old) return old
+      const outros = old.filter(t => t.hidrante_id !== hidranteId)
+      return [...outros, ...reordenados.map((t, i) => ({ ...t, ordem: i + 1 }))]
+    })
+    try {
+      await Promise.all(reordenados.map((t, i) => supabase.from('trechos').update({ ordem: i + 1 }).eq('id', t.id)))
+    } catch (err: any) {
+      toast({ title: 'Erro ao reordenar', description: err.message, variant: 'destructive' })
+      queryClient.invalidateQueries({ queryKey: ['trechos', projetoId] })
+    }
+  }, [trechos, projetoId, queryClient, toast])
+
   // ── Listener Revit (REVIT_TRECHO) ────────────────────────────────────────
   useEffect(() => {
     // Função central que processa o payload vindo do Revit
@@ -315,6 +418,13 @@ export default function Projeto() {
         return { tipo, dn, quantidade: Number(p.quantidade) || 1 }
       })
 
+      const nomeTrechoRevit = (d.nomeTrecho || '').trim().toUpperCase()
+
+      // Tentar identificar o trecho existente pelo nome (case-insensitive)
+      const trechoExistente = (trechos || []).find(
+        t => t.nome.trim().toUpperCase() === nomeTrechoRevit
+      )
+
       const revitForm = {
         ...TRECHO_VAZIO,
         nome: d.nomeTrecho || 'Trecho Revit',
@@ -326,13 +436,41 @@ export default function Projeto() {
       setTrechoForm(revitForm)
 
       if (hidrantes && hidrantes.length > 0) {
-        setTrechoHidranteId(hidrantes[0].id)
-        setEditTrecho(null)
-        setModalTrecho(true)
-        toast({
-          title: 'Trecho recebido do Revit',
-          description: `"${revitForm.nome}" — ${pecasMapeadas.length} tipo(s) de peça importados. Confirme o hidrante e salve.`,
-        })
+        if (trechoExistente) {
+          // Trecho identificado: abrir para edição com as peças novas do Revit
+          setTrechoHidranteId(trechoExistente.hidrante_id)
+          setEditTrecho(trechoExistente)
+          setTrechoForm({
+            nome: trechoExistente.nome,
+            tipo_trecho: trechoExistente.tipo_trecho,
+            bitola: trechoExistente.bitola || 50,
+            comprimento_real: Number(d.comprimentoReal) || trechoExistente.comprimento_real,
+            altura_estatica: trechoExistente.altura_estatica,
+            pecas: pecasMapeadas,
+            vazao_trecho: trechoExistente.vazao_trecho,
+            fator_hidrantes: (trechoExistente as any).fator_hidrantes || 1,
+            vazao_trecho_custom: trechoExistente.vazao_trecho_custom || 0,
+            qtd_lances: trechoExistente.qtd_lances || 1,
+            comprimento_por_lance: trechoExistente.comprimento_por_lance || 15,
+            d_interno_mangueira: trechoExistente.d_interno_mangueira || 63,
+            diametro_requinte: trechoExistente.diametro_requinte || 13,
+            k_fator_requinte: trechoExistente.k_fator_requinte || 1.0,
+          })
+          setModalTrecho(true)
+          toast({
+            title: `Revit → Trecho "${trechoExistente.nome}" identificado`,
+            description: `${pecasMapeadas.length} peça(s) importadas. Revise e salve.`,
+          })
+        } else {
+          // Novo trecho: abrir no primeiro hidrante para o usuário escolher
+          setTrechoHidranteId(hidrantes[0].id)
+          setEditTrecho(null)
+          setModalTrecho(true)
+          toast({
+            title: 'Trecho recebido do Revit',
+            description: `"${revitForm.nome}" — ${pecasMapeadas.length} tipo(s) de peça. Selecione o hidrante e salve.`,
+          })
+        }
       } else {
         toast({ title: 'Nenhum hidrante', description: 'Crie um hidrante antes de importar do Revit.', variant: 'destructive' })
       }
@@ -1005,54 +1143,42 @@ export default function Projeto() {
                           <p className="text-sm text-muted-foreground py-4 text-center">Nenhum trecho. Adicione um trecho abaixo.</p>
                         ) : (
                           <div className="overflow-x-auto">
-                            <table className="w-full text-xs">
-                              <thead>
-                                <tr className="border-b text-muted-foreground">
-                                  <th className="text-left py-1.5 pr-3 font-medium">Nome</th>
-                                  <th className="text-left py-1.5 pr-3 font-medium">Tipo</th>
-                                  <th className="text-right py-1.5 pr-3 font-medium">Ø (mm)</th>
-                                  <th className="text-right py-1.5 pr-3 font-medium">L. Real (m)</th>
-                                  <th className="text-right py-1.5 pr-3 font-medium">H. Est. (m)</th>
-                                  <th className="text-right py-1.5 pr-3 font-medium">Vazão</th>
-                                  <th className="text-left py-1.5 pr-3 font-medium">Peças</th>
-                                  <th className="text-right py-1.5 font-medium">Ações</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {trechosDo.map(trecho => (
-                                  <tr key={trecho.id} className="border-b border-border/50 hover:bg-muted/30">
-                                    <td className="py-1.5 pr-3 font-medium">{trecho.nome}</td>
-                                    <td className="py-1.5 pr-3">
-                                      <Badge variant="secondary" className="text-[10px]">{trecho.tipo_trecho}</Badge>
-                                    </td>
-                                    <td className="py-1.5 pr-3 text-right">{trecho.bitola}</td>
-                                    <td className="py-1.5 pr-3 text-right">{trecho.comprimento_real}</td>
-                                    <td className="py-1.5 pr-3 text-right">{trecho.altura_estatica}</td>
-                                    <td className="py-1.5 pr-3 text-right">
-                                      {trecho.vazao_trecho === 'fator'
-                                        ? <span className="text-blue-600 font-medium">{(trecho as any).fator_hidrantes || 1}× Q</span>
-                                        : trecho.vazao_trecho === 'custom'
-                                          ? <span className="text-amber-600 font-medium">{trecho.vazao_trecho_custom} l/min</span>
-                                          : <span className="text-muted-foreground">1× Q</span>
-                                      }
-                                    </td>
-                                    <td className="py-1.5 pr-3 text-muted-foreground">
-                                      {trecho.pecas?.length > 0 ? `${trecho.pecas.length} tipo(s)` : '—'}
-                                    </td>
-                                    <td className="py-1.5 text-right">
-                                      <div className="flex gap-1 justify-end">
-                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openModalTrecho(hidrante.id, trecho)}>
-                                          <Pencil className="h-3 w-3" />
-                                        </Button>
-                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => setConfirmarExcluirTrecho(trecho)}>
-                                          <Trash2 className="h-3 w-3" />
-                                        </Button>
-                                      </div>
-                                    </td>
+                            <DndContext
+                              sensors={sensors}
+                              collisionDetection={closestCenter}
+                              onDragEnd={(e) => handleDragEnd(e, hidrante.id)}
+                            >
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="border-b text-muted-foreground">
+                                    <th className="w-6 py-1.5 pl-2" />
+                                    <th className="text-left py-1.5 pr-3 font-medium">Nome</th>
+                                    <th className="text-left py-1.5 pr-3 font-medium">Tipo</th>
+                                    <th className="text-right py-1.5 pr-3 font-medium">Ø (mm)</th>
+                                    <th className="text-right py-1.5 pr-3 font-medium">L. Real (m)</th>
+                                    <th className="text-right py-1.5 pr-3 font-medium">H. Est. (m)</th>
+                                    <th className="text-right py-1.5 pr-3 font-medium">Vazão</th>
+                                    <th className="text-left py-1.5 pr-3 font-medium">Peças</th>
+                                    <th className="text-right py-1.5 font-medium">Ações</th>
                                   </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                                </thead>
+                                <SortableContext
+                                  items={trechosDo.map(t => t.id)}
+                                  strategy={verticalListSortingStrategy}
+                                >
+                                  <tbody>
+                                    {trechosDo.map(trecho => (
+                                      <SortableTrechoRow
+                                        key={trecho.id}
+                                        trecho={trecho}
+                                        onEdit={() => openModalTrecho(hidrante.id, trecho)}
+                                        onDelete={() => setConfirmarExcluirTrecho(trecho)}
+                                      />
+                                    ))}
+                                  </tbody>
+                                </SortableContext>
+                              </table>
+                            </DndContext>
                           </div>
                         )}
                         <div className="flex gap-2 mt-3 flex-wrap">
