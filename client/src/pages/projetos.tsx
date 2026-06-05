@@ -274,7 +274,11 @@ export default function Projetos() {
   const handleSubmitProjeto = (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.nome.trim()) return
-    criarProjeto.mutate(form)
+    if (editProjeto) {
+      editarProjetoMutation.mutate({ id: editProjeto.id, data: form })
+    } else {
+      criarProjeto.mutate(form)
+    }
   }
 
   const updateForm = (field: keyof NovoProjetoForm, value: string) => {

@@ -128,23 +128,43 @@ const D_INTERNO_TUBO: Record<number, number> = {
   350: 355.6,
 }
 
-// ─── Cálculo Hazen-Williams ───────────────────────────────────────────────────
-
-// Coeficiente C de Hazen-Williams (ferro galvanizado = 120, PVC = 150)
-const C_HW = 120
+// ─── Fórmulas de Perda de Carga (conforme planilha de referência) ─────────────
 
 /**
- * Perda de carga unitária (J) em mca/m
- * Fórmula: J = 0.00212 × (Q/60000)^1.85 / (D/1000)^4.87
- * Equivalente à Hazen-Williams: J = 10.67 × Q^1.852 / (C^1.852 × D^4.87)
- * Q: vazão em l/min
- * D: diâmetro interno em mm
+ * Perda de carga unitária (J) em mca/m para TUBULAÇÃO
+ * Fórmula: J = 0.00212 × (Q/60000)^1.85 / (DN/1000)^4.87
+ * Q: vazão em l/min | DN: diâmetro NOMINAL em mm
+ * Fonte: planilha NBR 10897 / NPT 022 (Ataide)
  */
 export function calcJ(Q: number, D: number): number {
   if (Q <= 0 || D <= 0) return 0
   const Qms = Q / 60000     // l/min → m³/s
-  const Dm = D / 1000       // mm → m
-  return (10.67 * Math.pow(Qms, 1.852)) / (Math.pow(C_HW, 1.852) * Math.pow(Dm, 4.87))
+  const Dm  = D / 1000      // mm → m
+  return 0.00212 * Math.pow(Qms, 1.85) / Math.pow(Dm, 4.87)
+}
+
+/**
+ * Perda de carga unitária (J) em mca/m para MANGUEIRA
+ * Fórmula: J = 0.0016 × (Q/60000)^2 / (DN/1000)^5
+ * Q: vazão em l/min | DN: diâmetro nominal da mangueira em mm
+ */
+export function calcJ_mangueira(Q: number, D: number): number {
+  if (Q <= 0 || D <= 0) return 0
+  const Qms = Q / 60000
+  const Dm  = D / 1000
+  return 0.0016 * Math.pow(Qms, 2) / Math.pow(Dm, 5)
+}
+
+/**
+ * Pressão no REQUINTE (esguicho) em mca
+ * Fórmula: hf = 0.0083 × (Q_m3h/3600)² / (D_requinte/1000)⁴
+ * Q: vazão em l/min | D_requinte: diâmetro do orifício do esguicho em mm
+ */
+export function calcHfRequinte(Q: number, D_requinte: number): number {
+  if (Q <= 0 || D_requinte <= 0) return 0
+  const Q_m3h = Q * 60 / 1000    // l/min → m³/h
+  const Dr    = D_requinte / 1000 // mm → m
+  return 0.0083 * Math.pow(Q_m3h / 3600, 2) / Math.pow(Dr, 4)
 }
 
 /**
@@ -227,18 +247,26 @@ export function calcularResultados(
       compReal = trecho.qtd_lances * trecho.comprimento_por_lance
     }
 
-    // Comprimento equivalente das peças
+    // Comprimento equivalente das peças (usa DN nominal)
     const compEquiv = calcCETotal(trecho.pecas || [], dn)
     const compTotal = compReal + compEquiv
 
-    // Perda de carga
-    const J = calcJ(vazao, dInterno)
-    let hf = J * compTotal
+    // Perda de carga — fórmula varia por tipo de trecho
+    let J: number
+    let hf: number
 
-    // Para requinte: usar K-fator se disponível
-    if (trecho.tipo_trecho === 'requinte' && trecho.k_fator_requinte) {
-      // Pressão necessária no requinte: P = (Q / K)²
-      hf = Math.pow(vazao / (trecho.k_fator_requinte || 1), 2)
+    if (trecho.tipo_trecho === 'mangueira') {
+      // Fórmula da planilha para mangueira: J = 0.0016 × (Q/60000)² / (DN/1000)⁵
+      J  = calcJ_mangueira(vazao, dn)
+      hf = J * compTotal
+    } else if (trecho.tipo_trecho === 'requinte') {
+      // Pressão no esguicho: hf = 0.0083 × (Q_m3h/3600)² / (D_requinte/1000)⁴
+      J  = 0
+      hf = calcHfRequinte(vazao, trecho.diametro_requinte || 16)
+    } else {
+      // Tubulação: Hazen-Williams com DN nominal
+      J  = calcJ(vazao, dn)
+      hf = J * compTotal
     }
 
     const velocidade = calcVelocidade(vazao, dInterno)
