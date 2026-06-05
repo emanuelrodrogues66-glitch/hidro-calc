@@ -17,6 +17,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useParams, useLocation } from 'wouter'
+import { useHashLocation } from 'wouter/use-hash-location'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth-context'
@@ -160,7 +161,7 @@ function SortableTrechoRow({
 
 export default function Projeto() {
   const { id } = useParams<{ id: string }>()
-  const [, navigate] = useLocation()
+  const [, navigate] = useHashLocation()
   const { user } = useAuth()
   const { toast } = useToast()
   const queryClient = useQueryClient()

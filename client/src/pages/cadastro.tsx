@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation } from 'wouter'
+import { useHashLocation } from 'wouter/use-hash-location'
 import { supabase } from '@/lib/supabase'
 import { LogoIcon } from '@/components/logo'
 import { Button } from '@/components/ui/button'
@@ -10,7 +11,7 @@ import { useToast } from '@/hooks/use-toast'
 import { Loader2, Eye, EyeOff } from 'lucide-react'
 
 export default function Cadastro() {
-  const [, navigate] = useLocation()
+  const [, navigate] = useHashLocation()
   const { toast } = useToast()
 
   const [email, setEmail] = useState('')

@@ -1,4 +1,5 @@
 import { useLocation } from 'wouter'
+import { useHashLocation } from 'wouter/use-hash-location'
 import { useAuth } from '@/lib/auth-context'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
@@ -61,7 +62,7 @@ const FAQ_ITEMS = [
 
 export default function Planos() {
   const { user } = useAuth()
-  const [, navigate] = useLocation()
+  const [, navigate] = useHashLocation()
 
   const { data: assinatura } = useQuery({
     queryKey: ['assinatura', user?.id],

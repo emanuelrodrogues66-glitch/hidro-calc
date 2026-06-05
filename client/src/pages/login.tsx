@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation } from 'wouter'
+import { useHashLocation } from 'wouter/use-hash-location'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth-context'
 import { LogoIcon } from '@/components/logo'
@@ -13,7 +14,7 @@ import { Redirect } from 'wouter'
 
 export default function Login() {
   const { user, loading } = useAuth()
-  const [, navigate] = useLocation()
+  const [, navigate] = useHashLocation()
   const { toast } = useToast()
 
   const [email, setEmail] = useState('')

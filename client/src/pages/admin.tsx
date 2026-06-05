@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useLocation } from 'wouter'
+import { useHashLocation } from 'wouter/use-hash-location'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth-context'
@@ -34,7 +35,7 @@ const STATUS = ['ativo', 'inativo', 'cancelado']
 
 export default function Admin() {
   const { user } = useAuth()
-  const [, navigate] = useLocation()
+  const [, navigate] = useHashLocation()
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
