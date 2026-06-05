@@ -165,6 +165,12 @@ export default function Projeto() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
+  // Refs para acesso sempre atualizado dentro de closures (listener Revit)
+  const trechosRef = useRef<typeof trechos>(trechos)
+  const hidrantesRef = useRef<typeof hidrantes>(hidrantes)
+  useEffect(() => { trechosRef.current = trechos }, [trechos])
+  useEffect(() => { hidrantesRef.current = hidrantes }, [hidrantes])
+
   // dnd-kit sensors
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -418,11 +424,11 @@ export default function Projeto() {
       })
 
       const nomeTrechoRevit = (d.nomeTrecho || '').trim().toUpperCase()
-      const trechoExistente = (trechos || []).find(
+      const trechoExistente = (trechosRef.current || []).find(
         t => t.nome.trim().toUpperCase() === nomeTrechoRevit
       )
 
-      if (!hidrantes || hidrantes.length === 0) {
+      if (!hidrantesRef.current || hidrantesRef.current.length === 0) {
         toast({ title: 'Nenhum hidrante', description: 'Crie um hidrante antes de importar do Revit.', variant: 'destructive' })
         return
       }
@@ -442,7 +448,7 @@ export default function Projeto() {
         return { atualizado: trechoExistente.nome }
       } else {
         // Trecho novo → criar automaticamente no primeiro hidrante
-        const trechosDoHidrante = (trechos || []).filter(t => t.hidrante_id === hidrantes[0].id)
+        const trechosDoHidrante = (trechosRef.current || []).filter(t => t.hidrante_id === hidrantesRef.current![0].id)
         const payload = {
           nome: d.nomeTrecho || 'Trecho Revit',
           tipo_trecho: 'normal' as const,
@@ -458,7 +464,7 @@ export default function Projeto() {
           d_interno_mangueira: null,
           diametro_requinte: null,
           k_fator_requinte: null,
-          hidrante_id: hidrantes[0].id,
+          hidrante_id: hidrantesRef.current![0].id,
           user_id: user!.id,
           ordem: trechosDoHidrante.length + 1,
           criado_em: new Date().toISOString(),
@@ -482,8 +488,8 @@ export default function Projeto() {
         if (lista.length === 0) return
         Promise.all(lista.map((t: any) => processarTrechoRevit(t))).then(resultados => {
           queryClient.invalidateQueries({ queryKey: ['trechos', projetoId] })
-          const atualizados = resultados.filter((r: any) => r?.atualizado).map((r: any) => r.atualizado)
-          const criados = resultados.filter((r: any) => r?.criado).map((r: any) => r.criado)
+          const atualizados = (resultados as any[]).filter((r: any) => r?.atualizado).map((r: any) => r.atualizado)
+          const criados = (resultados as any[]).filter((r: any) => r?.criado).map((r: any) => r.criado)
           const partes = []
           if (atualizados.length) partes.push(`${atualizados.length} atualizado(s)`)
           if (criados.length) partes.push(`${criados.length} criado(s)`)
@@ -534,7 +540,7 @@ export default function Projeto() {
       delete (window as any).__revitTrecho__
       delete (window as any).__revitTrechosLote__
     }
-  }, [hidrantes])
+  }, [])
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
