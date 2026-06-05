@@ -56,32 +56,9 @@ export default function Admin() {
   const { data: assinaturas, isLoading: loadingAss, refetch: refetchAss } = useQuery<Assinatura[]>({
     queryKey: ['admin-assinaturas'],
     queryFn: async () => {
-      // Busca assinaturas
-      const { data: assData, error: assError } = await supabase
-        .from('assinaturas')
-        .select('*')
-        .order('id', { ascending: false })
-      if (assError) throw assError
-
-      // Busca emails via Edge Function (requer admin)
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        const token = session?.access_token
-        const SUPABASE_URL = 'https://nynoqixlyemicmnulbbc.supabase.co'
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im55bm9xaXhseWVtaWNtbnVsYmJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0MjUwNTgsImV4cCI6MjA5NjAwMTA1OH0.I_L8o618Bt2VcwGn_OB362dDMl93O7YC3hfldgJCQIA'
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-list-users`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'apikey': SUPABASE_ANON_KEY,
-          }
-        })
-        const json = await res.json()
-        const emailMap: Record<string, string> = {}
-        json.users?.forEach((u: any) => { emailMap[u.id] = u.email })
-        return (assData ?? []).map(a => ({ ...a, email: emailMap[a.user_id] ?? '' }))
-      } catch {
-        return assData ?? []
-      }
+      const { data, error } = await supabase.rpc('get_assinaturas_com_email')
+      if (error) throw error
+      return data ?? []
     },
   })
 
