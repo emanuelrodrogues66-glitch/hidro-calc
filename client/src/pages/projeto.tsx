@@ -418,10 +418,26 @@ export default function Projeto() {
     const processarTrechoRevit = async (d: any) => {
       if (!d) return
 
-      if (!hidrantesRef.current || hidrantesRef.current.length === 0) {
+      const uid = userRef.current?.id
+      if (!uid) {
+        toast({ title: 'Usuário não autenticado', variant: 'destructive' })
+        return
+      }
+
+      // Buscar hidrantes diretamente do banco (garante dados frescos)
+      const { data: hidrantesBanco } = await supabase
+        .from('hidrantes')
+        .select('id')
+        .eq('projeto_id', projetoId)
+        .order('ordem', { ascending: true })
+        .limit(1)
+
+      if (!hidrantesBanco || hidrantesBanco.length === 0) {
         toast({ title: 'Nenhum hidrante', description: 'Crie um hidrante antes de importar do Revit.', variant: 'destructive' })
         return
       }
+
+      const hidranteId = hidrantesBanco[0].id
 
       // Mapear peças vindas do Revit para os tipos da tabela C.E.
       const pecasRevit: Peca[] = (d.pecas || [])
@@ -433,8 +449,15 @@ export default function Projeto() {
         .filter((p: Peca) => p.quantidade > 0)
 
       const nomeTrechoRevit = (d.nomeTrecho || '').trim().toUpperCase()
-      const trechoExistente = (trechosRef.current || []).find(
-        t => t.nome.trim().toUpperCase() === nomeTrechoRevit
+
+      // Buscar trecho existente diretamente do banco pelo nome
+      const { data: trechosBanco } = await supabase
+        .from('trechos')
+        .select('*')
+        .eq('hidrante_id', hidranteId)
+
+      const trechoExistente = (trechosBanco || []).find(
+        (t: any) => (t.nome || '').trim().toUpperCase() === nomeTrechoRevit
       )
 
       if (trechoExistente) {
@@ -471,7 +494,6 @@ export default function Projeto() {
 
       } else {
         // ── Trecho novo: criar no primeiro hidrante ──
-        const hidranteId = hidrantesRef.current![0].id
 
         // Busca a maior ordem atual para não colidir em inserts paralelos
         const { data: ordemData } = await supabase
