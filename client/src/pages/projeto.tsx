@@ -522,7 +522,6 @@ export default function Projeto() {
           hidrante_id: hidranteId,
           user_id: userRef.current!.id,
           ordem: proximaOrdem,
-          criado_em: new Date().toISOString(),
         }
 
         const { error } = await supabase.from('trechos').insert(payload)
