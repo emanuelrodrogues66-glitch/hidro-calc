@@ -72,7 +72,8 @@ const TRECHO_VAZIO = {
   comprimento_real: 0,
   altura_estatica: 0,
   pecas: [] as Peca[],
-  vazao_trecho: 'herda' as 'herda' | 'multiplicar' | 'custom',
+  vazao_trecho: 'herda' as 'herda' | 'fator' | 'custom',
+  fator_hidrantes: 1,        // para vazao_trecho === 'fator'
   vazao_trecho_custom: 0,
   qtd_lances: 1,
   comprimento_por_lance: 15,
@@ -256,6 +257,7 @@ export default function Projeto() {
         altura_estatica: Number(form.altura_estatica),
         pecas: JSON.stringify(form.pecas),
         vazao_trecho: form.vazao_trecho,
+        fator_hidrantes: form.vazao_trecho === 'fator' ? Number(form.fator_hidrantes) : null,
         vazao_trecho_custom: form.vazao_trecho === 'custom' ? Number(form.vazao_trecho_custom) : null,
         qtd_lances: form.tipo_trecho === 'mangueira' ? Number(form.qtd_lances) : null,
         comprimento_por_lance: form.tipo_trecho === 'mangueira' ? Number(form.comprimento_por_lance) : null,
@@ -325,6 +327,8 @@ export default function Projeto() {
         nome: d.nomeTrecho || 'Trecho Revit',
         comprimento_real: Number(d.comprimentoReal) || 0,
         pecas: pecasMapeadas,
+        vazao_trecho: 'herda' as const,
+        fator_hidrantes: 1,
       }
       setTrechoForm(revitForm)
 
@@ -391,7 +395,8 @@ export default function Projeto() {
         comprimento_real: t.comprimento_real,
         altura_estatica: t.altura_estatica,
         pecas: t.pecas || [],
-        vazao_trecho: t.vazao_trecho,
+        vazao_trecho: (t.vazao_trecho === 'multiplicar' ? 'fator' : t.vazao_trecho) as 'herda' | 'fator' | 'custom',
+        fator_hidrantes: (t as any).fator_hidrantes || 1,
         vazao_trecho_custom: t.vazao_trecho_custom || 0,
         qtd_lances: t.qtd_lances || 1,
         comprimento_por_lance: t.comprimento_por_lance || 15,
@@ -992,6 +997,7 @@ export default function Projeto() {
                                   <th className="text-right py-1.5 pr-3 font-medium">Ø (mm)</th>
                                   <th className="text-right py-1.5 pr-3 font-medium">L. Real (m)</th>
                                   <th className="text-right py-1.5 pr-3 font-medium">H. Est. (m)</th>
+                                  <th className="text-right py-1.5 pr-3 font-medium">Vazão</th>
                                   <th className="text-left py-1.5 pr-3 font-medium">Peças</th>
                                   <th className="text-right py-1.5 font-medium">Ações</th>
                                 </tr>
@@ -1006,6 +1012,14 @@ export default function Projeto() {
                                     <td className="py-1.5 pr-3 text-right">{trecho.bitola}</td>
                                     <td className="py-1.5 pr-3 text-right">{trecho.comprimento_real}</td>
                                     <td className="py-1.5 pr-3 text-right">{trecho.altura_estatica}</td>
+                                    <td className="py-1.5 pr-3 text-right">
+                                      {trecho.vazao_trecho === 'fator'
+                                        ? <span className="text-blue-600 font-medium">{(trecho as any).fator_hidrantes || 1}× Q</span>
+                                        : trecho.vazao_trecho === 'custom'
+                                          ? <span className="text-amber-600 font-medium">{trecho.vazao_trecho_custom} l/min</span>
+                                          : <span className="text-muted-foreground">1× Q</span>
+                                      }
+                                    </td>
                                     <td className="py-1.5 pr-3 text-muted-foreground">
                                       {trecho.pecas?.length > 0 ? `${trecho.pecas.length} tipo(s)` : '—'}
                                     </td>
@@ -1278,20 +1292,30 @@ export default function Projeto() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Vazão</Label>
+                <Label>Vazão do trecho</Label>
                 <Select value={trechoForm.vazao_trecho} onValueChange={v => updateTrechoForm('vazao_trecho', v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="herda">Herda do hidrante</SelectItem>
-                    <SelectItem value="multiplicar">Multiplicar (hidrantes simultâneos)</SelectItem>
-                    <SelectItem value="custom">Personalizada</SelectItem>
+                    <SelectItem value="herda">Simples — herda do hidrante</SelectItem>
+                    <SelectItem value="fator">Múltipla — N hidrantes simultâneos</SelectItem>
+                    <SelectItem value="custom">Personalizada (l/min)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              {trechoForm.vazao_trecho === 'multiplicar' && (
+              {trechoForm.vazao_trecho === 'fator' && (
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Qtd. hidrantes simultâneos</Label>
-                  <Input type="number" min="1" value={trechoForm.qtd_lances} onChange={e => updateTrechoForm('qtd_lances', parseInt(e.target.value))} />
+                  <Label className="text-xs">Nº de hidrantes simultâneos (fator)</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={trechoForm.fator_hidrantes}
+                    onChange={e => updateTrechoForm('fator_hidrantes', parseInt(e.target.value) || 1)}
+                    placeholder="Ex: 4"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Q = {trechoForm.fator_hidrantes || 1} × vazão do hidrante
+                  </p>
                 </div>
               )}
               {trechoForm.vazao_trecho === 'custom' && (

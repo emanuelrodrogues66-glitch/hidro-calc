@@ -24,7 +24,10 @@ export interface Trecho {
   comprimento_por_lance?: number
   diametro_requinte?: number
   k_fator_requinte?: number
-  vazao_trecho: 'herda' | 'multiplicar' | 'custom'
+  vazao_trecho: 'herda' | 'fator' | 'custom'
+  // fator_hidrantes: quantos hidrantes simultâneos este trecho alimenta
+  // Ex: ramal principal com 4 hidrantes → fator=4 → Q = 4 × vazao_minima
+  fator_hidrantes?: number
   vazao_trecho_custom?: number
   d_interno_mangueira?: number
 }
@@ -189,11 +192,16 @@ export function calcularResultados(
   for (const trecho of trechosOrdenados) {
     // Determinar vazão do trecho
     let vazao = vazaoBase
-    if (trecho.vazao_trecho === 'multiplicar' && trecho.qtd_lances) {
-      vazao = vazaoBase * trecho.qtd_lances
+    if (trecho.vazao_trecho === 'fator') {
+      // Trecho de ramal principal: Q = fator × vazao_minima do hidrante
+      const fator = trecho.fator_hidrantes && trecho.fator_hidrantes > 1
+        ? trecho.fator_hidrantes
+        : 1
+      vazao = hidrante.vazao_minima * fator
     } else if (trecho.vazao_trecho === 'custom' && trecho.vazao_trecho_custom) {
       vazao = trecho.vazao_trecho_custom
     }
+    // 'herda': mantém vazaoBase (que começa como vazao_minima)
 
     // Determinar diâmetro interno
     let dInterno: number
@@ -247,10 +255,9 @@ export function calcularResultados(
       pressao_acumulada: pressaoAcumulada,
     })
 
-    // Propagar vazão para próximo trecho (herda)
-    if (trecho.vazao_trecho === 'herda') {
-      vazaoBase = vazao
-    }
+    // Propagar vazão: sempre atualiza vazaoBase com a vazão calculada
+    // (trechos subsequentes com 'herda' pegam a vazão deste)
+    vazaoBase = vazao
   }
 
   return linhas
