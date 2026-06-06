@@ -415,16 +415,16 @@ export default function Projeto() {
 
   useEffect(() => {
     // Função central que processa o payload vindo do Revit
-    const processarTrechoRevit = async (d: any) => {
-      if (!d) return
-
+    // Processa um lote de trechos do Revit sem duplicatas
+    // hidranteId e trechosExistentes são buscados UMA vez antes do loop
+    const processarLoteRevit = async (lista: any[]) => {
       const uid = userRef.current?.id
       if (!uid) {
         toast({ title: 'Usuário não autenticado', variant: 'destructive' })
-        return
+        return []
       }
 
-      // Buscar hidrantes diretamente do banco (garante dados frescos)
+      // 1) Buscar hidrante uma vez só
       const { data: hidrantesBanco } = await supabase
         .from('hidrantes')
         .select('id')
@@ -434,103 +434,116 @@ export default function Projeto() {
 
       if (!hidrantesBanco || hidrantesBanco.length === 0) {
         toast({ title: 'Nenhum hidrante', description: 'Crie um hidrante antes de importar do Revit.', variant: 'destructive' })
-        return
+        return []
       }
 
       const hidranteId = hidrantesBanco[0].id
 
-      // Mapear peças vindas do Revit para os tipos da tabela C.E.
-      const pecasRevit: Peca[] = (d.pecas || [])
-        .map((p: any) => {
-          const tipo = mapearFamiliaParaTipo(p.familiaOriginal || '', p.tamanho || '')
-            ?? (p.familiaOriginal || TIPOS_PECAS[0])
-          return { tipo, quantidade: Number(p.quantidade) || 1 }
-        })
-        .filter((p: Peca) => p.quantidade > 0)
-
-      const nomeTrechoRevit = (d.nomeTrecho || '').trim().toUpperCase()
-
-      // Buscar trecho existente diretamente do banco pelo nome
+      // 2) Buscar todos os trechos existentes uma vez só
       const { data: trechosBanco } = await supabase
         .from('trechos')
         .select('*')
         .eq('hidrante_id', hidranteId)
 
-      const trechoExistente = (trechosBanco || []).find(
-        (t: any) => (t.nome || '').trim().toUpperCase() === nomeTrechoRevit
-      )
+      // Cache local para não re-buscar durante o loop
+      const trechosCache: any[] = [...(trechosBanco || [])]
+      let ordemMaxima = Math.max(0, ...trechosCache.map((t: any) => t.ordem || 0))
 
-      if (trechoExistente) {
-        // ── Trecho já existe: adicionar apenas peças novas, manter comprimento ──
-        const pecasAtuais: Peca[] = Array.isArray(trechoExistente.pecas)
-          ? trechoExistente.pecas
-          : JSON.parse(trechoExistente.pecas || '[]')
+      const resultados: any[] = []
 
-        // Tipos que já existem no trecho (conjunto para lookup rápido)
-        const tiposExistentes = new Set(pecasAtuais.map((p: Peca) => p.tipo.trim().toUpperCase()))
+      for (const d of lista) {
+        if (!d) continue
 
-        // Só adicionar peças cujo tipo ainda não existe
-        const pecasNovas = pecasRevit.filter(
-          p => !tiposExistentes.has(p.tipo.trim().toUpperCase())
+        // Mapear peças
+        const pecasRevit: Peca[] = (d.pecas || [])
+          .map((p: any) => {
+            const tipo = mapearFamiliaParaTipo(p.familiaOriginal || '', p.tamanho || '')
+              ?? (p.familiaOriginal || TIPOS_PECAS[0])
+            return { tipo, quantidade: Number(p.quantidade) || 1 }
+          })
+          .filter((p: Peca) => p.quantidade > 0)
+
+        const nomeTrechoRevit = (d.nomeTrecho || '').trim().toUpperCase()
+
+        // Buscar no cache local (inclui trechos criados neste mesmo lote)
+        const trechoExistente = trechosCache.find(
+          (t: any) => (t.nome || '').trim().toUpperCase() === nomeTrechoRevit
         )
 
-        if (pecasNovas.length === 0) {
-          // Nada a adicionar — trecho já tem todas as peças
-          return { atualizado: trechoExistente.nome, pecasAdicionadas: 0 }
+        if (trechoExistente) {
+          // Trecho já existe — adicionar apenas peças novas
+          const pecasAtuais: Peca[] = Array.isArray(trechoExistente.pecas)
+            ? trechoExistente.pecas
+            : JSON.parse(trechoExistente.pecas || '[]')
+
+          const tiposExistentes = new Set(pecasAtuais.map((p: Peca) => p.tipo.trim().toUpperCase()))
+          const pecasNovas = pecasRevit.filter(p => !tiposExistentes.has(p.tipo.trim().toUpperCase()))
+
+          if (pecasNovas.length === 0) {
+            resultados.push({ atualizado: trechoExistente.nome, pecasAdicionadas: 0 })
+            continue
+          }
+
+          const pecasMescladas = [...pecasAtuais, ...pecasNovas]
+          const { error } = await supabase
+            .from('trechos')
+            .update({ pecas: JSON.stringify(pecasMescladas) })
+            .eq('id', trechoExistente.id)
+
+          if (error) {
+            toast({ title: `Erro ao atualizar "${d.nomeTrecho}"`, description: error.message, variant: 'destructive' })
+          } else {
+            // Atualizar cache local
+            trechoExistente.pecas = pecasMescladas
+            resultados.push({ atualizado: trechoExistente.nome, pecasAdicionadas: pecasNovas.length })
+          }
+
+        } else {
+          // Trecho novo — criar e adicionar ao cache local
+          ordemMaxima += 1
+          const payload = {
+            nome: d.nomeTrecho || 'Trecho Revit',
+            tipo_trecho: 'normal' as const,
+            bitola: 50,
+            comprimento_real: Number(d.comprimentoReal) || 0,
+            altura_estatica: 0,
+            pecas: JSON.stringify(pecasRevit),
+            vazao_trecho: 'herda' as const,
+            fator_hidrantes: 1,
+            vazao_trecho_custom: null,
+            qtd_lances: null,
+            comprimento_por_lance: null,
+            d_interno_mangueira: null,
+            diametro_requinte: null,
+            k_fator_requinte: null,
+            hidrante_id: hidranteId,
+            user_id: uid,
+            ordem: ordemMaxima,
+          }
+
+          const { data: inserted, error } = await supabase
+            .from('trechos')
+            .insert(payload)
+            .select()
+            .single()
+
+          if (error) {
+            toast({ title: `Erro ao criar "${d.nomeTrecho}"`, description: error.message, variant: 'destructive' })
+          } else {
+            // Adicionar ao cache para que trechos seguintes no lote não dupliquem
+            trechosCache.push(inserted)
+            resultados.push({ criado: d.nomeTrecho })
+          }
         }
-
-        const pecasMescladas = [...pecasAtuais, ...pecasNovas]
-
-        const { error } = await supabase
-          .from('trechos')
-          .update({ pecas: JSON.stringify(pecasMescladas) })
-          .eq('id', trechoExistente.id)
-
-        if (error) {
-          toast({ title: `Erro ao atualizar "${d.nomeTrecho}"`, description: error.message, variant: 'destructive' })
-          return
-        }
-        return { atualizado: trechoExistente.nome, pecasAdicionadas: pecasNovas.length }
-
-      } else {
-        // ── Trecho novo: criar no primeiro hidrante ──
-
-        // Busca a maior ordem atual para não colidir em inserts paralelos
-        const { data: ordemData } = await supabase
-          .from('trechos')
-          .select('ordem')
-          .eq('hidrante_id', hidranteId)
-          .order('ordem', { ascending: false })
-          .limit(1)
-        const proximaOrdem = ((ordemData?.[0]?.ordem) || 0) + 1
-
-        const payload = {
-          nome: d.nomeTrecho || 'Trecho Revit',
-          tipo_trecho: 'normal' as const,
-          bitola: 50,
-          comprimento_real: Number(d.comprimentoReal) || 0,
-          altura_estatica: 0,
-          pecas: JSON.stringify(pecasRevit),
-          vazao_trecho: 'herda' as const,
-          fator_hidrantes: 1,
-          vazao_trecho_custom: null,
-          qtd_lances: null,
-          comprimento_por_lance: null,
-          d_interno_mangueira: null,
-          diametro_requinte: null,
-          k_fator_requinte: null,
-          hidrante_id: hidranteId,
-          user_id: userRef.current!.id,
-          ordem: proximaOrdem,
-        }
-
-        const { error } = await supabase.from('trechos').insert(payload)
-        if (error) {
-          toast({ title: `Erro ao criar "${d.nomeTrecho}"`, description: error.message, variant: 'destructive' })
-          return
-        }
-        return { criado: d.nomeTrecho }
       }
+
+      return resultados
+    }
+
+    // Compatibilidade: trecho único usa o mesmo processador de lote
+    const processarTrechoRevit = async (d: any) => {
+      const resultados = await processarLoteRevit([d])
+      return resultados[0]
     }
 
     // Canal 1: window.postMessage (funciona quando app está em aba normal)
@@ -543,11 +556,7 @@ export default function Projeto() {
         const lista = Array.isArray(data.data) ? data.data : []
         if (lista.length === 0) return
         ;(async () => {
-          const resultados: any[] = []
-          for (const t of lista) {
-            const r = await processarTrechoRevit(t)
-            resultados.push(r)
-          }
+          const resultados = await processarLoteRevit(lista)
           queryClient.invalidateQueries({ queryKey: ['trechos', projetoId] })
           const criados    = resultados.filter(r => r?.criado).length
           const atualizados = resultados.filter(r => r?.atualizado && r.pecasAdicionadas > 0)
@@ -589,11 +598,7 @@ export default function Projeto() {
         const lista = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr
         if (!Array.isArray(lista) || lista.length === 0) return
         ;(async () => {
-          const resultados: any[] = []
-          for (const t of lista) {
-            const r = await processarTrechoRevit(t)
-            resultados.push(r)
-          }
+          const resultados = await processarLoteRevit(lista)
           queryClient.invalidateQueries({ queryKey: ['trechos', projetoId] })
           const criados    = resultados.filter(r => r?.criado).length
           const atualizados = resultados.filter(r => r?.atualizado && r.pecasAdicionadas > 0)
