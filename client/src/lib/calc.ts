@@ -19,7 +19,7 @@ export interface Trecho {
   comprimento_real: number // m
   altura_estatica: number  // m (positivo = subida, negativo = descida)
   pecas: Peca[]
-  tipo_trecho: 'normal' | 'mangueira' | 'requinte'
+  tipo_trecho: 'normal' | 'mangueira' | 'requinte' | 'hidrante'
   qtd_lances?: number
   comprimento_por_lance?: number
   diametro_requinte?: number
@@ -267,6 +267,94 @@ export function calcularResultados(
       vazao = trecho.vazao_trecho_custom
     }
     // 'herda': mantém vazaoBase (que começa como vazao_minima)
+
+    // ── Tipo HIDRANTE: gera 3 linhas automáticas (tubulação + mangueira + requinte) ──
+    if (trecho.tipo_trecho === 'hidrante') {
+      const dnTubo   = trecho.bitola || 63
+      const dnMang   = trecho.d_interno_mangueira || 38  // armazenamos bitola mangueira aqui
+      // Diâmetro do requinte automático conforme planilha
+      const dReq     = trecho.diametro_requinte != null
+        ? trecho.diametro_requinte
+        : (dnMang === 63 ? 23.795032 : 14.585452)
+      const compTubo = trecho.comprimento_real || 0
+      const lances   = trecho.qtd_lances || 2
+      const compLance= trecho.comprimento_por_lance || 15
+      const compMang = lances * compLance
+      const hEst     = trecho.altura_estatica
+
+      // ─ 1. Tubulação do ramal até o hidrante ─
+      const cesTubo  = calcCETotal(trecho.pecas || [], dnTubo)
+      const ltotalTubo = compTubo + cesTubo
+      const Jtub   = calcJ(vazao, dnTubo)
+      const hfTub  = Jtub * ltotalTubo
+      hfAcumulado += hfTub
+      pressaoAcumulada = hidrante.pressao_minima + hfAcumulado + hEst
+      linhas.push({
+        trecho: `${trecho.nome} — Tubulação`,
+        tipo: 'normal',
+        bitola: dnTubo,
+        comprimento_real: compTubo,
+        comprimento_equiv: cesTubo,
+        comprimento_total: ltotalTubo,
+        altura_estatica: hEst,
+        vazao,
+        velocidade: calcVelocidade(vazao, D_INTERNO_TUBO[dnTubo] || dnTubo),
+        perda_carga_unitaria: Jtub,
+        perda_carga: hfTub,
+        hf_acumulado: hfAcumulado,
+        hest_acumulado: hEst,
+        pressao_acumulada: pressaoAcumulada,
+      })
+
+      // ─ 2. Mangueira ─
+      const Jmang  = calcJ_mangueira(vazao, dnMang)
+      const hfMang = Jmang * compMang
+      hfAcumulado += hfMang
+      pressaoAcumulada = hidrante.pressao_minima + hfAcumulado + hEst
+      linhas.push({
+        trecho: `${trecho.nome} — Mangueira`,
+        tipo: 'mangueira',
+        bitola: dnMang,
+        comprimento_real: compMang,
+        comprimento_equiv: 0,
+        comprimento_total: compMang,
+        altura_estatica: hEst,
+        vazao,
+        velocidade: calcVelocidade(vazao, dnMang),
+        perda_carga_unitaria: Jmang,
+        perda_carga: hfMang,
+        hf_acumulado: hfAcumulado,
+        hest_acumulado: hEst,
+        pressao_acumulada: pressaoAcumulada,
+      })
+
+      // ─ 3. Requinte ─
+      const hfReq = calcHfRequinte(vazao, dReq)
+      hfAcumulado += hfReq
+      pressaoAcumulada = hidrante.pressao_minima + hfAcumulado + hEst
+      linhas.push({
+        trecho: `${trecho.nome} — Requinte`,
+        tipo: 'requinte',
+        bitola: dReq,
+        comprimento_real: 0,
+        comprimento_equiv: 0,
+        comprimento_total: 0,
+        altura_estatica: hEst,
+        vazao,
+        velocidade: 0,
+        perda_carga_unitaria: 0,
+        perda_carga: hfReq,
+        hf_acumulado: hfAcumulado,
+        hest_acumulado: hEst,
+        pressao_acumulada: pressaoAcumulada,
+      })
+
+      // propagar vazão igual aos outros tipos
+      if (trecho.vazao_trecho === 'custom') vazaoBase = vazao
+      continue
+    }
+
+    // ── Tipos normais (normal / mangueira / requinte) ──────────────────────────
 
     // Determinar diâmetro interno
     let dInterno: number

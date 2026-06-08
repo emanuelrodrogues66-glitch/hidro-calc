@@ -85,7 +85,7 @@ const HIDRANTE_VAZIO = {
 // ─── Trecho Form Default ──────────────────────────────────────────────────────
 const TRECHO_VAZIO = {
   nome: '',
-  tipo_trecho: 'normal' as 'normal' | 'mangueira' | 'requinte',
+  tipo_trecho: 'normal' as 'normal' | 'mangueira' | 'requinte' | 'hidrante',
   bitola: 50,
   comprimento_real: 0,
   altura_estatica: 0,
@@ -127,7 +127,9 @@ function SortableTrechoRow({
       </td>
       <td className="py-1.5 pr-3 font-medium">{trecho.nome}</td>
       <td className="py-1.5 pr-3">
-        <span className="text-[10px] bg-secondary text-secondary-foreground rounded px-1.5 py-0.5">{trecho.tipo_trecho}</span>
+        <span className="text-[10px] bg-secondary text-secondary-foreground rounded px-1.5 py-0.5">
+            {trecho.tipo_trecho === 'hidrante' ? '🔥 H' : trecho.tipo_trecho}
+          </span>
       </td>
       <td className="py-1.5 pr-3 text-right">{trecho.bitola}</td>
       <td className="py-1.5 pr-3 text-right">{trecho.comprimento_real}</td>
@@ -346,10 +348,10 @@ export default function Projeto() {
         vazao_trecho: form.vazao_trecho,
         fator_hidrantes: form.vazao_trecho === 'fator' ? Number(form.fator_hidrantes) : null,
         vazao_trecho_custom: form.vazao_trecho === 'custom' ? Number(form.vazao_trecho_custom) : null,
-        qtd_lances: form.tipo_trecho === 'mangueira' ? Number(form.qtd_lances) : null,
-        comprimento_por_lance: form.tipo_trecho === 'mangueira' ? Number(form.comprimento_por_lance) : null,
-        d_interno_mangueira: form.tipo_trecho === 'mangueira' ? Number(form.d_interno_mangueira) : null,
-        diametro_requinte: form.tipo_trecho === 'requinte' ? Number(form.diametro_requinte) : null,
+        qtd_lances: (form.tipo_trecho === 'mangueira' || form.tipo_trecho === 'hidrante') ? Number(form.qtd_lances) : null,
+        comprimento_por_lance: (form.tipo_trecho === 'mangueira' || form.tipo_trecho === 'hidrante') ? Number(form.comprimento_por_lance) : null,
+        d_interno_mangueira: (form.tipo_trecho === 'mangueira' || form.tipo_trecho === 'hidrante') ? Number(form.d_interno_mangueira) : null,
+        diametro_requinte: (form.tipo_trecho === 'requinte' || form.tipo_trecho === 'hidrante') ? Number(form.diametro_requinte) : null,
         k_fator_requinte: form.tipo_trecho === 'requinte' ? Number(form.k_fator_requinte) : null,
         hidrante_id: trechoHidranteId,
         user_id: user!.id,
@@ -673,7 +675,7 @@ export default function Projeto() {
         qtd_lances: t.qtd_lances || 1,
         comprimento_por_lance: t.comprimento_por_lance || 15,
         d_interno_mangueira: t.d_interno_mangueira || 63,
-        diametro_requinte: t.diametro_requinte || 14.585452,
+        diametro_requinte: t.diametro_requinte ?? 14.585452,
         k_fator_requinte: t.k_fator_requinte || 1.0,
       })
     } else {
@@ -1558,6 +1560,7 @@ export default function Projeto() {
                     <SelectItem value="normal">Normal (tubo)</SelectItem>
                     <SelectItem value="mangueira">Mangueira</SelectItem>
                     <SelectItem value="requinte">Requinte</SelectItem>
+                    <SelectItem value="hidrante">Hidrante (H) — agrupado</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1664,6 +1667,82 @@ export default function Projeto() {
                 <div className="space-y-1.5">
                   <Label className="text-xs">Comp. real (m)</Label>
                   <Input type="number" step="0.01" value={trechoForm.comprimento_real} onChange={e => updateTrechoForm('comprimento_real', parseFloat(e.target.value))} />
+                </div>
+              </div>
+            )}
+
+            {/* ── Tipo HIDRANTE: campos agrupados ── */}
+            {trechoForm.tipo_trecho === 'hidrante' && (
+              <div className="space-y-3">
+                <div className="rounded-md border border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-800 p-3">
+                  <p className="text-xs font-semibold text-orange-700 dark:text-orange-400 mb-2">
+                    🔥 Trecho Hidrante — gera automaticamente: Tubulação + Mangueira + Requinte
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">DN Tubulação (mm)</Label>
+                      <Select value={String(trechoForm.bitola)} onValueChange={v => updateTrechoForm('bitola', parseInt(v))}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {DNS_DISPONIVEIS.map(d => <SelectItem key={d} value={String(d)}>DN {d}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Comp. real tubulação (m)</Label>
+                      <Input type="number" step="0.01" value={trechoForm.comprimento_real}
+                        onChange={e => updateTrechoForm('comprimento_real', parseFloat(e.target.value))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">DN Mangueira (mm)</Label>
+                      <Select
+                        value={String(trechoForm.d_interno_mangueira)}
+                        onValueChange={v => {
+                          const dn = parseInt(v)
+                          updateTrechoForm('d_interno_mangueira', dn)
+                          // Atualizar diâmetro do requinte automaticamente
+                          updateTrechoForm('diametro_requinte', dn === 63 ? 23.795032 : 14.585452)
+                        }}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="38">38 mm (1½")</SelectItem>
+                          <SelectItem value="63">63 mm (2½")</SelectItem>
+                          <SelectItem value="75">75 mm (3")</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Qtd. lances mangueira</Label>
+                      <Input type="number" min="1" value={trechoForm.qtd_lances}
+                        onChange={e => updateTrechoForm('qtd_lances', parseInt(e.target.value))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Comp. por lance (m)</Label>
+                      <Input type="number" step="0.5" value={trechoForm.comprimento_por_lance}
+                        onChange={e => updateTrechoForm('comprimento_por_lance', parseFloat(e.target.value))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Alt. estática / cota (m)</Label>
+                      <Input type="number" step="0.01" value={trechoForm.altura_estatica}
+                        onChange={e => updateTrechoForm('altura_estatica', parseFloat(e.target.value))} />
+                    </div>
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-orange-200 dark:border-orange-800">
+                    <p className="text-[11px] text-muted-foreground">
+                      Ø Requinte automático:{' '}
+                      <span className="font-semibold text-orange-700 dark:text-orange-400">
+                        {trechoForm.d_interno_mangueira === 63 ? '23.795 mm' : '14.585 mm'}
+                      </span>
+                      {' '}— conforme planilha NBR (pode ajustar abaixo)
+                    </p>
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <Label className="text-xs shrink-0">Ø Requinte manual (mm)</Label>
+                      <Input type="number" step="0.001" className="h-7 text-xs"
+                        value={trechoForm.diametro_requinte}
+                        onChange={e => updateTrechoForm('diametro_requinte', parseFloat(e.target.value))} />
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
