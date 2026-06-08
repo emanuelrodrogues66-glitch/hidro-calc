@@ -793,17 +793,44 @@ export default function Projeto() {
     URL.revokeObjectURL(url)
   }
 
+  // Expande trechos do tipo 'hidrante' nas 3 sub-linhas (tubulação + mangueira + requinte)
+  // para que trechosDo[i] sincronize com res[i] no PDF
+  const expandirTrechos = (trechos: any[]) => {
+    const expandido: any[] = []
+    for (const t of trechos) {
+      if (t.tipo_trecho !== 'hidrante') {
+        expandido.push(t)
+        continue
+      }
+      const dnMang = t.d_interno_mangueira || 38
+      const dReq   = t.diametro_requinte != null ? t.diametro_requinte : (dnMang === 63 ? 23.795032 : 14.585452)
+      const lances = t.qtd_lances || 2
+      const lance  = t.comprimento_por_lance || 15
+      // Sub-trecho 1: Tubulação
+      expandido.push({ ...t, nome: `${t.nome} — Tubulação`, tipo_trecho: 'normal' })
+      // Sub-trecho 2: Mangueira
+      expandido.push({ ...t, nome: `${t.nome} — Mangueira`, tipo_trecho: 'mangueira',
+        bitola: dnMang, comprimento_real: lances * lance, qtd_lances: lances, comprimento_por_lance: lance })
+      // Sub-trecho 3: Requinte
+      expandido.push({ ...t, nome: `${t.nome} — Requinte`, tipo_trecho: 'requinte',
+        diametro_requinte: dReq, comprimento_real: 0 })
+    }
+    return expandido
+  }
+
   const exportarPDF = (hidrante: DBHidrante) => {
-    const trechosDo = getTrechosDo(hidrante.id)
-    if (trechosDo.length === 0) {
+    const trechosBrutos = getTrechosDo(hidrante.id)
+    if (trechosBrutos.length === 0) {
       toast({ title: 'Sem trechos', description: 'Adicione trechos para gerar o memorial.', variant: 'destructive' })
       return
     }
+    // Expandir trechos tipo 'hidrante' em 3 sub-linhas p/ sincronizar com resultados
+    const trechosDo = expandirTrechos(trechosBrutos)
 
     // ── 3 Pontos da Curva da Bomba ────────────────────────────────────────────
     // Ponto 1: Q adotado (vazao_minima * num_hidrantes), H = pressao acumulada
     const Q1 = hidrante.vazao_minima
-    const res1 = calcularResultados(hidrante, trechosDo)
+    const res1 = calcularResultados(hidrante, trechosBrutos)
     const H1 = res1[res1.length - 1]?.pressao_acumulada ?? 0
 
     // Ponto 2: media de Q1 e Q3
@@ -811,12 +838,12 @@ export default function Projeto() {
     const Q2 = (Q1 + Q3) / 2
     // Calcular H2 interpolando: usamos hidrante com vazao=Q2
     const hidr2 = { ...hidrante, vazao_minima: Q2 }
-    const res2 = calcularResultados(hidr2, trechosDo)
+    const res2 = calcularResultados(hidr2, trechosBrutos)
     const H2 = res2[res2.length - 1]?.pressao_acumulada ?? 0
 
     // Ponto 3: Q + fator_seguranca
     const hidr3 = { ...hidrante, vazao_minima: Q3 }
-    const res3 = calcularResultados(hidr3, trechosDo)
+    const res3 = calcularResultados(hidr3, trechosBrutos)
     const H3 = res3[res3.length - 1]?.pressao_acumulada ?? 0
 
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
