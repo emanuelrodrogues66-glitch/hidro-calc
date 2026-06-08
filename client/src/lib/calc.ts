@@ -61,7 +61,9 @@ export interface ResultadoLinha {
   velocidade: number
   perda_carga_unitaria: number  // J m/m
   perda_carga: number           // hf m
-  pressao_acumulada: number     // mca
+  hf_acumulado: number          // Σhf — soma das perdas de carga (sem altura estática)
+  hest_acumulado: number        // ΣH.Est — soma dos desníveis acumulados
+  pressao_acumulada: number     // H din. = hf_acumulado + hest_acumulado + pressao_minima
 }
 
 // ─── Tabela C.E. — Comprimentos Equivalentes (m) por DN ─────────────────────
@@ -245,6 +247,8 @@ export function calcularResultados(
 ): ResultadoLinha[] {
   const linhas: ResultadoLinha[] = []
   let pressaoAcumulada = hidrante.pressao_minima  // inicia com pressão mínima do hidrante
+  let hfAcumulado      = 0   // Σhf — perdas de carga puras
+  let hestAcumulado    = 0   // ΣH.Est — desníveis acumulados
 
   const trechosOrdenados = [...trechos].sort((a, b) => a.ordem - b.ordem)
 
@@ -307,7 +311,9 @@ export function calcularResultados(
     }
 
     const velocidade = calcVelocidade(vazao, dInterno)
-    pressaoAcumulada = pressaoAcumulada + hf + trecho.altura_estatica
+    hfAcumulado   += hf
+    hestAcumulado += trecho.altura_estatica
+    pressaoAcumulada = hidrante.pressao_minima + hfAcumulado + hestAcumulado
 
     linhas.push({
       trecho: trecho.nome,
@@ -321,6 +327,8 @@ export function calcularResultados(
       velocidade,
       perda_carga_unitaria: J,
       perda_carga: hf,
+      hf_acumulado: hfAcumulado,
+      hest_acumulado: hestAcumulado,
       pressao_acumulada: pressaoAcumulada,
     })
 

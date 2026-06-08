@@ -778,9 +778,9 @@ export default function Projeto() {
       return
     }
     const resultados = calcularResultados(hidrante, trechosDo)
-    const header = 'Trecho,Tipo,Bitola(mm),L.Real(m),L.Equiv(m),L.Total(m),H.Est(m),Vazão(l/min),Veloc.(m/s),J(m/m),hf(m),P.Acum.(mca)\n'
+    const header = 'Trecho,Tipo,Bitola(mm),L.Real(m),L.Equiv(m),L.Total(m),H.Est(m),Vazão(l/min),Veloc.(m/s),J(m/m),hf(m),Hf acum.(m),H.Est acum.(m),H din.(mca)\n'
     const rows = resultados.map(r =>
-      `${r.trecho},${r.tipo},${r.bitola},${r.comprimento_real.toFixed(2)},${r.comprimento_equiv.toFixed(2)},${r.comprimento_total.toFixed(2)},${r.altura_estatica.toFixed(2)},${r.vazao.toFixed(0)},${r.velocidade.toFixed(2)},${r.perda_carga_unitaria.toFixed(4)},${r.perda_carga.toFixed(2)},${r.pressao_acumulada.toFixed(2)}`
+      `${r.trecho},${r.tipo},${r.bitola},${r.comprimento_real.toFixed(2)},${r.comprimento_equiv.toFixed(2)},${r.comprimento_total.toFixed(2)},${r.altura_estatica.toFixed(2)},${r.vazao.toFixed(0)},${r.velocidade.toFixed(2)},${r.perda_carga_unitaria.toFixed(4)},${r.perda_carga.toFixed(2)},${r.hf_acumulado.toFixed(2)},${r.hest_acumulado.toFixed(2)},${r.pressao_acumulada.toFixed(2)}`
     ).join('\n')
     const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -955,7 +955,7 @@ export default function Projeto() {
 
     // Tabela com 3 pontos
     const baseHead = ['Trecho', 'O (mm)', 'L real (m)', 'C.E. (m)', 'L total (m)', 'H est. (mca)']
-    const pHead = (lbl: string) => ['Q (l/min)', 'J (m/m)', 'Hf trecho', 'Hf acum.', 'H din. (mca)']
+    const pHead = (lbl: string) => ['Q (l/min)', 'J (m/m)', 'Hf trecho', 'Hf acum.', 'H.Est acum.', 'H din. (mca)']
 
     autoTable(doc, {
       startY: y,
@@ -972,9 +972,9 @@ export default function Projeto() {
           { content: `3o Ponto (Q +${((hidrante.fator_seguranca-1)*100).toFixed(0)}% seg.) — Q = ${Q3.toFixed(0)} l/min`, colSpan: 5, styles: { halign: 'center', fillColor: [200, 60, 40], textColor: [255,255,255] } },
         ],
         [
-          ...['Q (l/min)', 'J (m/m)', 'Hf trecho', 'Hf acum.', 'H din. (mca)'].map(h => ({ content: h, styles: { halign: 'center' as const, fillColor: [50, 90, 160] as [number,number,number], textColor: [255,255,255] as [number,number,number], fontSize: 6.5 } })),
-          ...['Q (l/min)', 'J (m/m)', 'Hf trecho', 'Hf acum.', 'H din. (mca)'].map(h => ({ content: h, styles: { halign: 'center' as const, fillColor: [70, 110, 180] as [number,number,number], textColor: [255,255,255] as [number,number,number], fontSize: 6.5 } })),
-          ...['Q (l/min)', 'J (m/m)', 'Hf trecho', 'Hf acum.', 'H din. (mca)'].map(h => ({ content: h, styles: { halign: 'center' as const, fillColor: [200, 60, 40] as [number,number,number], textColor: [255,255,255] as [number,number,number], fontSize: 6.5 } })),
+          ...['Q (l/min)', 'J (m/m)', 'Hf trecho', 'Hf acum.', 'H.Est acum.', 'H din. (mca)'].map(h => ({ content: h, styles: { halign: 'center' as const, fillColor: [50, 90, 160] as [number,number,number], textColor: [255,255,255] as [number,number,number], fontSize: 6.5 } })),
+          ...['Q (l/min)', 'J (m/m)', 'Hf trecho', 'Hf acum.', 'H.Est acum.', 'H din. (mca)'].map(h => ({ content: h, styles: { halign: 'center' as const, fillColor: [70, 110, 180] as [number,number,number], textColor: [255,255,255] as [number,number,number], fontSize: 6.5 } })),
+          ...['Q (l/min)', 'J (m/m)', 'Hf trecho', 'Hf acum.', 'H.Est acum.', 'H din. (mca)'].map(h => ({ content: h, styles: { halign: 'center' as const, fillColor: [200, 60, 40] as [number,number,number], textColor: [255,255,255] as [number,number,number], fontSize: 6.5 } })),
         ],
       ],
       body: trechosDo.map((t, i) => {
@@ -991,8 +991,9 @@ export default function Projeto() {
           r.vazao.toFixed(0),
           r.tipo === 'requinte' ? '—' : r.perda_carga_unitaria.toFixed(6),
           r.perda_carga.toFixed(4),
+          r.hf_acumulado.toFixed(4),
+          r.hest_acumulado.toFixed(4),
           r.pressao_acumulada.toFixed(4),
-          (r.pressao_acumulada - (i > 0 ? (res1[i-1]?.pressao_acumulada ?? 0) - (res1[i-1]?.altura_estatica ?? 0) : 0)).toFixed(4),
         ] : ['—','—','—','—','—']
 
         // H din = Hf acumulado + altura estatica acumulada
@@ -1010,16 +1011,22 @@ export default function Projeto() {
           r1?.vazao.toFixed(0) ?? '—',
           r1 && r1.tipo !== 'requinte' ? r1.perda_carga_unitaria.toFixed(6) : '—',
           r1?.perda_carga.toFixed(4) ?? '—',
+          r1?.hf_acumulado.toFixed(4) ?? '—',
+          r1?.hest_acumulado.toFixed(4) ?? '—',
           r1?.pressao_acumulada.toFixed(4) ?? '—',
           hdin1.toFixed(4),
           r2?.vazao.toFixed(0) ?? '—',
           r2 && r2.tipo !== 'requinte' ? r2.perda_carga_unitaria.toFixed(6) : '—',
           r2?.perda_carga.toFixed(4) ?? '—',
+          r2?.hf_acumulado.toFixed(4) ?? '—',
+          r2?.hest_acumulado.toFixed(4) ?? '—',
           r2?.pressao_acumulada.toFixed(4) ?? '—',
           hdin2.toFixed(4),
           r3?.vazao.toFixed(0) ?? '—',
           r3 && r3.tipo !== 'requinte' ? r3.perda_carga_unitaria.toFixed(6) : '—',
           r3?.perda_carga.toFixed(4) ?? '—',
+          r3?.hf_acumulado.toFixed(4) ?? '—',
+          r3?.hest_acumulado.toFixed(4) ?? '—',
           r3?.pressao_acumulada.toFixed(4) ?? '—',
           hdin3.toFixed(4),
         ]
@@ -1381,9 +1388,9 @@ export default function Projeto() {
                                     <th className="text-center py-2 px-1 font-medium bg-red-600" colSpan={4}>3º Ponto — Q={Q3.toFixed(0)}</th>
                                   </tr>
                                   <tr className="text-[10px]">
-                                    {['J','hf','Hf acum.','H din.'].map(h => <th key={`p1${h}`} className="py-1 px-1 text-center bg-blue-700/80 font-normal">{h}</th>)}
-                                    {['J','hf','Hf acum.','H din.'].map(h => <th key={`p2${h}`} className="py-1 px-1 text-center bg-blue-600/80 font-normal">{h}</th>)}
-                                    {['J','hf','Hf acum.','H din.'].map(h => <th key={`p3${h}`} className="py-1 px-1 text-center bg-red-600/80 font-normal">{h}</th>)}
+                                    {['J','hf','Hf acum.','H.Est ac.','H din.'].map(h => <th key={`p1${h}`} className="py-1 px-1 text-center bg-blue-700/80 font-normal">{h}</th>)}
+                                    {['J','hf','Hf acum.','H.Est ac.','H din.'].map(h => <th key={`p2${h}`} className="py-1 px-1 text-center bg-blue-600/80 font-normal">{h}</th>)}
+                                    {['J','hf','Hf acum.','H.Est ac.','H din.'].map(h => <th key={`p3${h}`} className="py-1 px-1 text-center bg-red-600/80 font-normal">{h}</th>)}
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -1402,17 +1409,20 @@ export default function Projeto() {
                                       {/* Ponto 1 */}
                                       <td className="py-1.5 px-1 text-center text-blue-700 dark:text-blue-300">{r.tipo === 'requinte' ? '—' : r.perda_carga_unitaria.toFixed(6)}</td>
                                       <td className="py-1.5 px-1 text-center text-blue-700 dark:text-blue-300">{r.perda_carga.toFixed(4)}</td>
-                                      <td className="py-1.5 px-1 text-center text-blue-700 dark:text-blue-300">{r.pressao_acumulada.toFixed(4)}</td>
+                                      <td className="py-1.5 px-1 text-center text-blue-700 dark:text-blue-300">{r.hf_acumulado.toFixed(4)}</td>
+                                      <td className="py-1.5 px-1 text-center text-blue-700 dark:text-blue-300">{r.hest_acumulado.toFixed(4)}</td>
                                       <td className="py-1.5 px-1 text-center font-semibold text-blue-800 dark:text-blue-200">{r.pressao_acumulada.toFixed(4)}</td>
                                       {/* Ponto 2 */}
                                       <td className="py-1.5 px-1 text-center text-blue-600 dark:text-blue-400">{r2i && r2i.tipo !== 'requinte' ? r2i.perda_carga_unitaria.toFixed(6) : '—'}</td>
                                       <td className="py-1.5 px-1 text-center text-blue-600 dark:text-blue-400">{r2i?.perda_carga.toFixed(4) ?? '—'}</td>
-                                      <td className="py-1.5 px-1 text-center text-blue-600 dark:text-blue-400">{r2i?.pressao_acumulada.toFixed(4) ?? '—'}</td>
+                                      <td className="py-1.5 px-1 text-center text-blue-600 dark:text-blue-400">{r2i?.hf_acumulado.toFixed(4) ?? '—'}</td>
+                                      <td className="py-1.5 px-1 text-center text-blue-600 dark:text-blue-400">{r2i?.hest_acumulado.toFixed(4) ?? '—'}</td>
                                       <td className="py-1.5 px-1 text-center font-semibold text-blue-700 dark:text-blue-300">{r2i?.pressao_acumulada.toFixed(4) ?? '—'}</td>
                                       {/* Ponto 3 */}
                                       <td className="py-1.5 px-1 text-center text-red-600 dark:text-red-400">{r3i && r3i.tipo !== 'requinte' ? r3i.perda_carga_unitaria.toFixed(6) : '—'}</td>
                                       <td className="py-1.5 px-1 text-center text-red-600 dark:text-red-400">{r3i?.perda_carga.toFixed(4) ?? '—'}</td>
-                                      <td className="py-1.5 px-1 text-center text-red-600 dark:text-red-400">{r3i?.pressao_acumulada.toFixed(4) ?? '—'}</td>
+                                      <td className="py-1.5 px-1 text-center text-red-600 dark:text-red-400">{r3i?.hf_acumulado.toFixed(4) ?? '—'}</td>
+                                      <td className="py-1.5 px-1 text-center text-red-600 dark:text-red-400">{r3i?.hest_acumulado.toFixed(4) ?? '—'}</td>
                                       <td className="py-1.5 px-1 text-center font-semibold text-red-700 dark:text-red-300">{r3i?.pressao_acumulada.toFixed(4) ?? '—'}</td>
                                     </tr>
                                     )
