@@ -96,7 +96,7 @@ const TRECHO_VAZIO = {
   qtd_lances: 1,
   comprimento_por_lance: 15,
   d_interno_mangueira: 63,
-  diametro_requinte: 13,
+  diametro_requinte: 14.585452,  // padrão mangueira 38mm conforme planilha
   k_fator_requinte: 1.0,
 }
 
@@ -673,7 +673,7 @@ export default function Projeto() {
         qtd_lances: t.qtd_lances || 1,
         comprimento_por_lance: t.comprimento_por_lance || 15,
         d_interno_mangueira: t.d_interno_mangueira || 63,
-        diametro_requinte: t.diametro_requinte || 13,
+        diametro_requinte: t.diametro_requinte || 14.585452,
         k_fator_requinte: t.k_fator_requinte || 1.0,
       })
     } else {
@@ -979,7 +979,7 @@ export default function Projeto() {
       ],
       body: trechosDo.map((t, i) => {
         const r1 = res1[i], r2 = res2[i], r3 = res3[i]
-        const dn = t.tipo_trecho === 'requinte' ? `${t.diametro_requinte ?? 16} mm` : (t.bitola ?? '—')
+        const dn = t.tipo_trecho === 'requinte' ? `${t.diametro_requinte ?? 14.585452} mm` : (t.bitola ?? '—')
         const lreal = t.tipo_trecho === 'mangueira' && t.qtd_lances && t.comprimento_por_lance
           ? `${t.qtd_lances}x${t.comprimento_por_lance}`
           : (r1?.comprimento_real.toFixed(2) ?? '—')
@@ -1069,7 +1069,7 @@ export default function Projeto() {
       // Header do trecho
       let trechoDesc = `Trecho ${i + 1}: ${t.nome}  |  `
       if (t.tipo_trecho === 'requinte') {
-        trechoDesc += `REQUINTE O ${t.diametro_requinte ?? 16} mm  |  K = ${t.k_fator_requinte ?? '—'}  |  H estatica = ${t.altura_estatica.toFixed(2)} m.c.a.`
+        trechoDesc += `REQUINTE O ${t.diametro_requinte ?? 14.585452} mm  |  K = ${t.k_fator_requinte ?? '—'}  |  H estatica = ${t.altura_estatica.toFixed(2)} m.c.a.`
       } else if (t.tipo_trecho === 'mangueira') {
         trechoDesc += `MANGUEIRA ${t.qtd_lances ?? 1} lance(s) x ${t.comprimento_por_lance ?? 15} m = ${((t.qtd_lances ?? 1) * (t.comprimento_por_lance ?? 15)).toFixed(1)} m  |  O ${t.bitola ?? '—'} mm  |  H estatica = ${t.altura_estatica.toFixed(2)} m.c.a.`
       } else {
@@ -1090,7 +1090,7 @@ export default function Projeto() {
           startY: y,
           head: [['Descricao', 'Q 1 (l/min)', 'H req 1 (mca)', 'Q 2 (l/min)', 'H req 2 (mca)', 'Q 3 (l/min)', 'H req 3 (mca)']],
           body: [[
-            `Esguicho O${t.diametro_requinte ?? 16} mm — K = ${t.k_fator_requinte ?? '—'} — H = (Q/K)²`,
+            `Esguicho O${t.diametro_requinte ?? 14.585452} mm — K = ${t.k_fator_requinte ?? '—'} — H = (Q/K)²`,
             res1[i]?.vazao.toFixed(0) ?? '—',
             res1[i]?.perda_carga.toFixed(4) ?? '—',
             res2[i]?.vazao.toFixed(0) ?? '—',
