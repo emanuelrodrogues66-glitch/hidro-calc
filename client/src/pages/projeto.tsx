@@ -108,10 +108,12 @@ function SortableTrechoRow({
   trecho,
   onEdit,
   onDelete,
+  onVincular,
 }: {
   trecho: any
   onEdit: () => void
   onDelete: () => void
+  onVincular: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: trecho.id })
   const style = {
@@ -154,6 +156,9 @@ function SortableTrechoRow({
       </td>
       <td className="py-1.5 text-right">
         <div className="flex gap-1 justify-end">
+          <button className="h-6 w-6 flex items-center justify-center rounded hover:bg-muted text-blue-600" title="Vincular a trecho compartilhado" onClick={onVincular}>
+            🔗
+          </button>
           <button className="h-6 w-6 flex items-center justify-center rounded hover:bg-muted" onClick={onEdit}>
             <Pencil className="h-3 w-3" />
           </button>
@@ -195,6 +200,7 @@ export default function Projeto() {
 
   const [confirmarExcluirHidrante, setConfirmarExcluirHidrante] = useState<DBHidrante | null>(null)
   const [confirmarExcluirTrecho, setConfirmarExcluirTrecho] = useState<DBTrecho | null>(null)
+  const [vincularTrecho, setVincularTrecho] = useState<DBTrecho | null>(null)
   const [modalImportCSV, setModalImportCSV] = useState(false)
   const [importCSVHidranteId, setImportCSVHidranteId] = useState<number | null>(null)
   const [importCSVPreview, setImportCSVPreview] = useState<ReturnType<typeof parsearCSVRevit>>([])
@@ -1400,6 +1406,7 @@ export default function Projeto() {
                                         trecho={trecho}
                                         onEdit={() => openModalTrecho(hidrante.id, trecho)}
                                         onDelete={() => setConfirmarExcluirTrecho(trecho)}
+                                        onVincular={() => setVincularTrecho(trecho)}
                                       />
                                     ))}
                                   </tbody>
@@ -2036,6 +2043,57 @@ export default function Projeto() {
       </AlertDialog>
 
       {/* Confirm delete trecho */}
+      {/* ── Dialog Vincular Trecho ── */}
+      <Dialog open={!!vincularTrecho} onOpenChange={(o) => { if (!o) setVincularTrecho(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>🔗 Vincular "{vincularTrecho?.nome}"</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Selecione o trecho pai. Este trecho usará os dados do pai automaticamente.
+            Apenas o nome é preservado.
+          </p>
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {/* Opção: remover vínculo */}
+            <button
+              className="w-full text-left px-3 py-2 rounded border hover:bg-muted text-sm flex items-center gap-2"
+              onClick={async () => {
+                if (!vincularTrecho) return
+                await supabase.from('trechos').update({ trecho_ref_id: null }).eq('id', vincularTrecho.id)
+                queryClient.invalidateQueries({ queryKey: ['trechos', projetoId] })
+                setVincularTrecho(null)
+              }}
+            >
+              <span className="text-muted-foreground">✕</span> Sem vínculo (independente)
+            </button>
+            {(trechos || [])
+              .filter(t => t.id !== vincularTrecho?.id && !t.trecho_ref_id)
+              .map(t => {
+                const hid = (hidrantes ?? []).find(h => h.id === t.hidrante_id)
+                const isAtual = t.id === vincularTrecho?.trecho_ref_id
+                return (
+                  <button
+                    key={t.id}
+                    className={`w-full text-left px-3 py-2 rounded border text-sm flex items-center gap-2 ${isAtual ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30' : 'hover:bg-muted'}`}
+                    onClick={async () => {
+                      if (!vincularTrecho) return
+                      await supabase.from('trechos').update({ trecho_ref_id: t.id }).eq('id', vincularTrecho.id)
+                      queryClient.invalidateQueries({ queryKey: ['trechos', projetoId] })
+                      setVincularTrecho(null)
+                    }}
+                  >
+                    {isAtual && <span className="text-blue-600">✓</span>}
+                    <span className="text-[11px] text-muted-foreground">[{hid?.nome ?? '?'}]</span>
+                    <span className="font-medium">{t.nome}</span>
+                    <span className="text-[11px] text-muted-foreground ml-auto">{t.tipo_trecho} · DN{t.bitola}</span>
+                  </button>
+                )
+              })
+            }
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <AlertDialog open={!!confirmarExcluirTrecho} onOpenChange={(o) => !o && setConfirmarExcluirTrecho(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
