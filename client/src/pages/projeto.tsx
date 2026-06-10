@@ -99,6 +99,7 @@ const TRECHO_VAZIO = {
   d_interno_mangueira: 63,
   diametro_requinte: 14.585452,  // padrão mangueira 38mm conforme planilha
   k_fator_requinte: 1.0,
+  trecho_ref_id: null as number | null,
 }
 
 // ─── SortableTrechoRow ──────────────────────────────────────────────────────
@@ -1668,9 +1669,9 @@ export default function Projeto() {
                   <SelectContent>
                     <SelectItem value="">Sem vínculo (independente)</SelectItem>
                     {(trechos || [])
-                      .filter(t => t.id !== (editTrecho?.id ?? -1))
+                      .filter(t => t.id !== (editTrecho?.id ?? -1) && !t.trecho_ref_id)
                       .map(t => {
-                        const hid = hidrantes?.find(h => h.id === t.hidrante_id)
+                        const hid = (hidrantes ?? []).find(h => h.id === t.hidrante_id)
                         return (
                           <SelectItem key={t.id} value={String(t.id)}>
                             [{hid?.nome ?? '?'}] {t.nome} ({t.tipo_trecho}, DN{t.bitola})
