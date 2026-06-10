@@ -1641,7 +1641,7 @@ export default function Projeto() {
       </Dialog>
 
       {/* ── Modal Trecho ─────────────────────────────────────────────────────── */}
-      <Sheet open={modalTrecho} onOpenChange={(open) => { if (!open) { setModalTrecho(false); setTimeout(() => { setEditTrecho(null); setTrechoForm({ ...TRECHO_VAZIO }) }, 300) } }}>
+      <Sheet open={modalTrecho} onOpenChange={(open) => { if (!open) setModalTrecho(false) }}>
         <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
           <SheetHeader>
             <SheetTitle>{editTrecho ? 'Editar Trecho' : 'Novo Trecho'}</SheetTitle>
