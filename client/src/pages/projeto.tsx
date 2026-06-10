@@ -1562,7 +1562,7 @@ export default function Projeto() {
       </main>
 
       {/* ── Modal Hidrante ──────────────────────────────────────────────────── */}
-      <Dialog open={modalHidrante} onOpenChange={(open) => { if (!open) { setModalHidrante(false); setEditHidrante(null) } }}>
+      <Dialog open={modalHidrante} onOpenChange={(open) => { if (!open) { setModalHidrante(false); setTimeout(() => { setEditHidrante(null) }, 300) } }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editHidrante ? 'Editar Hidrante' : 'Novo Hidrante'}</DialogTitle>
@@ -1641,7 +1641,7 @@ export default function Projeto() {
       </Dialog>
 
       {/* ── Modal Trecho ─────────────────────────────────────────────────────── */}
-      <Sheet open={modalTrecho} onOpenChange={(open) => { if (!open) { setModalTrecho(false); setEditTrecho(null) } }}>
+      <Sheet open={modalTrecho} onOpenChange={(open) => { if (!open) { setModalTrecho(false); setTimeout(() => { setEditTrecho(null); setTrechoForm({ ...TRECHO_VAZIO }) }, 300) } }}>
         <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
           <SheetHeader>
             <SheetTitle>{editTrecho ? 'Editar Trecho' : 'Novo Trecho'}</SheetTitle>
