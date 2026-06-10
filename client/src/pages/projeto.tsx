@@ -1653,7 +1653,6 @@ export default function Projeto() {
                 <Input value={trechoForm.nome} onChange={e => updateTrechoForm('nome', e.target.value)} required placeholder="Ex: Trecho 1 — Saída bomba" />
               </div>
 
-              {/* VINCULO_PLACEHOLDER */}
               <div className="space-y-1.5">
                 <Label>Tipo</Label>
                 <Select value={trechoForm.tipo_trecho} onValueChange={v => updateTrechoForm('tipo_trecho', v)}>
@@ -1701,42 +1700,6 @@ export default function Projeto() {
               )}
             </div>
 
-            {/* Vincular a trecho compartilhado */}
-            {(trechos || []).length > 0 && (
-              <div className="space-y-1.5">
-                <Label className="text-xs flex items-center gap-1.5">
-                  🔗 Vincular a trecho (compartilhar dados)
-                  <span className="text-[10px] text-muted-foreground font-normal">— opcional</span>
-                </Label>
-                <Select
-                  value={(trechoForm as any).trecho_ref_id != null ? String((trechoForm as any).trecho_ref_id) : ''}
-                  onValueChange={v => updateTrechoForm('trecho_ref_id' as any, v ? parseInt(v) : null)}
-                >
-                  <SelectTrigger className="text-xs h-8">
-                    <SelectValue placeholder="Sem vínculo (independente)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">Sem vínculo (independente)</SelectItem>
-                    {(trechos || [])
-                      .filter(t => t.id !== (editTrecho?.id ?? -1) && !t.trecho_ref_id)
-                      .map(t => {
-                        const hid = (hidrantes ?? []).find(h => h.id === t.hidrante_id)
-                        return (
-                          <SelectItem key={t.id} value={String(t.id)}>
-                            [{hid?.nome ?? '?'}] {t.nome} ({t.tipo_trecho}, DN{t.bitola})
-                          </SelectItem>
-                        )
-                      })
-                    }
-                  </SelectContent>
-                </Select>
-                {(trechoForm as any).trecho_ref_id && (
-                  <p className="text-[11px] text-blue-600 dark:text-blue-400">
-                    ⚡ Este trecho usará os dados do trecho pai. Ao editar o pai, este atualiza automaticamente.
-                  </p>
-                )}
-              </div>
-            )}
 
             {/* Campos por tipo */}
             {trechoForm.tipo_trecho === 'normal' && (
