@@ -1939,13 +1939,13 @@ export default function Projeto() {
               </Select>
             </div>
 
-            <DialogFooter>
+            <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" type="button" onClick={() => setModalTrecho(false)}>Cancelar</Button>
               <Button type="submit" disabled={salvarTrecho.isPending}>
                 {salvarTrecho.isPending && <span className="mr-2 h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />}
                 {editTrecho ? 'Salvar' : 'Adicionar'}
               </Button>
-            </DialogFooter>
+            </div>
           </form>
         </SheetContent>
       </Sheet>
