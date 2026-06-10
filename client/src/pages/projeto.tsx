@@ -53,6 +53,7 @@ type DBTrecho = Trecho & {
   id: number
   hidrante_id: number
   user_id: string
+  trecho_ref_id?: number | null  // se preenchido, usa dados do trecho pai
 }
 
 type DBProjeto = {
@@ -125,7 +126,12 @@ function SortableTrechoRow({
           <GripVertical className="h-3.5 w-3.5" />
         </button>
       </td>
-      <td className="py-1.5 pr-3 font-medium">{trecho.nome}</td>
+      <td className="py-1.5 pr-3 font-medium">
+        {trecho.nome}
+        {trecho.trecho_ref_id && (
+          <span className="ml-1.5 text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 rounded px-1 py-0.5" title="Vinculado — usa dados de outro trecho">🔗 vinculado</span>
+        )}
+      </td>
       <td className="py-1.5 pr-3">
         <span className="text-[10px] bg-secondary text-secondary-foreground rounded px-1.5 py-0.5">
             {trecho.tipo_trecho === 'hidrante' ? '🔥 H' : trecho.tipo_trecho}
@@ -341,6 +347,7 @@ export default function Projeto() {
       const payload = {
         nome: form.nome,
         tipo_trecho: form.tipo_trecho,
+        trecho_ref_id: (form as any).trecho_ref_id || null,
         bitola: Number(form.bitola),
         comprimento_real: Number(form.comprimento_real),
         altura_estatica: Number(form.altura_estatica),
@@ -676,6 +683,7 @@ export default function Projeto() {
         comprimento_por_lance: t.comprimento_por_lance || 15,
         d_interno_mangueira: t.d_interno_mangueira || 63,
         diametro_requinte: t.diametro_requinte ?? 14.585452,
+        trecho_ref_id: t.trecho_ref_id ?? null,
         k_fator_requinte: t.k_fator_requinte || 1.0,
       })
     } else {
@@ -779,7 +787,7 @@ export default function Projeto() {
       toast({ title: 'Sem trechos', description: 'Adicione trechos para exportar.', variant: 'destructive' })
       return
     }
-    const resultados = calcularResultados(hidrante, trechosDo)
+    const resultados = calcularResultados(hidrante, resolverTrechos(trechosDo))
     const header = 'Trecho,Tipo,Bitola(mm),L.Real(m),L.Equiv(m),L.Total(m),H.Est(m),Vazão(l/min),Veloc.(m/s),J(m/m),hf(m),Hf acum.(m),H.Est acum.(m),H din.(mca)\n'
     const rows = resultados.map(r =>
       `${r.trecho},${r.tipo},${r.bitola},${r.comprimento_real.toFixed(2)},${r.comprimento_equiv.toFixed(2)},${r.comprimento_total.toFixed(2)},${r.altura_estatica.toFixed(2)},${r.vazao.toFixed(0)},${r.velocidade.toFixed(2)},${r.perda_carga_unitaria.toFixed(4)},${r.perda_carga.toFixed(2)},${r.hf_acumulado.toFixed(2)},${r.hest_acumulado.toFixed(2)},${r.pressao_acumulada.toFixed(2)}`
@@ -792,6 +800,16 @@ export default function Projeto() {
     a.click()
     URL.revokeObjectURL(url)
   }
+
+  // Resolve trechos com referência: substitui dados do filho pelos do pai
+  const resolverTrechos = (lista: DBTrecho[]): DBTrecho[] =>
+    lista.map(t => {
+      if (!t.trecho_ref_id) return t
+      const pai = (trechos || []).find(p => p.id === t.trecho_ref_id)
+      if (!pai) return t
+      // Mantém apenas hidrante_id, ordem e nome do filho — todo o resto vem do pai
+      return { ...pai, id: t.id, hidrante_id: t.hidrante_id, ordem: t.ordem, nome: t.nome, trecho_ref_id: t.trecho_ref_id }
+    })
 
   // Expande trechos do tipo 'hidrante' nas 3 sub-linhas (tubulação + mangueira + requinte)
   // para que trechosDo[i] sincronize com res[i] no PDF
@@ -830,7 +848,7 @@ export default function Projeto() {
     // ── 3 Pontos da Curva da Bomba ────────────────────────────────────────────
     // Ponto 1: Q adotado (vazao_minima * num_hidrantes), H = pressao acumulada
     const Q1 = hidrante.vazao_minima
-    const res1 = calcularResultados(hidrante, trechosBrutos)
+    const res1 = calcularResultados(hidrante, resolverTrechos(trechosBrutos))
     const H1 = res1[res1.length - 1]?.pressao_acumulada ?? 0
 
     // Ponto 2: media de Q1 e Q3
@@ -838,12 +856,12 @@ export default function Projeto() {
     const Q2 = (Q1 + Q3) / 2
     // Calcular H2 interpolando: usamos hidrante com vazao=Q2
     const hidr2 = { ...hidrante, vazao_minima: Q2 }
-    const res2 = calcularResultados(hidr2, trechosBrutos)
+    const res2 = calcularResultados(hidr2, resolverTrechos(trechosBrutos))
     const H2 = res2[res2.length - 1]?.pressao_acumulada ?? 0
 
     // Ponto 3: Q + fator_seguranca
     const hidr3 = { ...hidrante, vazao_minima: Q3 }
-    const res3 = calcularResultados(hidr3, trechosBrutos)
+    const res3 = calcularResultados(hidr3, resolverTrechos(trechosBrutos))
     const H3 = res3[res3.length - 1]?.pressao_acumulada ?? 0
 
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
@@ -1217,7 +1235,61 @@ export default function Projeto() {
             <h1 className="font-semibold text-sm truncate">{projeto?.nome}</h1>
             {projeto?.norma && <Badge variant="secondary" className="text-xs shrink-0">{projeto.norma}</Badge>}
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={async () => {
+              if (!hidrantes || hidrantes.length === 0) return
+              const { jsPDF } = await import('jspdf')
+              await import('jspdf-autotable')
+              const doc = new (jsPDF as any)({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+              let primeiro = true
+              for (const h of hidrantes) {
+                const tb = getTrechosDo(h.id)
+                if (tb.length === 0) continue
+                if (!primeiro) doc.addPage()
+                primeiro = false
+                const tRes = resolverTrechos(tb)
+                const tExp = expandirTrechos(tRes)
+                const res  = calcularResultados(h, tRes)
+                const W = 297
+                doc.setFillColor(26, 58, 107)
+                doc.rect(0, 0, W, 22, 'F')
+                doc.setTextColor(255, 255, 255)
+                doc.setFontSize(11)
+                doc.setFont('helvetica', 'bold')
+                doc.text('BIM FIRE HIDRO CALC — Memorial Descritivo', W / 2, 9, { align: 'center' })
+                doc.setFontSize(8)
+                doc.setFont('helvetica', 'normal')
+                doc.text(`Hidrante: ${h.nome}  |  Vazão: ${h.vazao_minima} l/min  |  H din. final: ${(res[res.length-1]?.pressao_acumulada ?? 0).toFixed(2)} mca  |  Emitido: ${new Date().toLocaleDateString('pt-BR')}`, W / 2, 17, { align: 'center' })
+                ;(doc as any).autoTable({
+                  startY: 26,
+                  head: [['Trecho','Tipo','DN','L.Real','L.Equiv','L.Total','H.Est','Q(l/min)','J(m/m)','hf(m)','Hf acum.','H din.']],
+                  body: tExp.map((t: any, i: number) => {
+                    const r = res[i]
+                    return [
+                      t.nome, t.tipo_trecho, t.bitola,
+                      (t.comprimento_real||0).toFixed(2),
+                      (r?.comprimento_equiv??0).toFixed(2),
+                      (r?.comprimento_total??0).toFixed(2),
+                      (t.altura_estatica||0).toFixed(2),
+                      (r?.vazao??0).toFixed(0),
+                      (r?.perda_carga_unitaria??0).toFixed(4),
+                      (r?.perda_carga??0).toFixed(4),
+                      (r?.hf_acumulado??0).toFixed(4),
+                      (r?.pressao_acumulada??0).toFixed(4),
+                    ]
+                  }),
+                  styles: { fontSize: 7, cellPadding: 1.5 },
+                  headStyles: { fillColor: [26, 58, 107], fontSize: 7 },
+                  alternateRowStyles: { fillColor: [245, 247, 255] },
+                  margin: { left: 8, right: 8 },
+                })
+              }
+              if (primeiro) { alert('Nenhum hidrante com trechos cadastrados.'); return }
+              const proj = projetos?.find((p: any) => p.id === projetoId)
+              doc.save(`Memorial_${(proj?.nome ?? 'projeto').replace(/[^a-zA-Z0-9]/g, '_')}_todos.pdf`)
+            }}>
+              📄 <span className="hidden sm:inline">Exportar todos</span>
+            </Button>
             <Button size="sm" onClick={() => openModalHidrante()} className="gap-1.5">
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">Adicionar Hidrante</span>
@@ -1250,7 +1322,7 @@ export default function Projeto() {
           <div className="space-y-6">
             {hidrantes.map(hidrante => {
               const trechosDo = getTrechosDo(hidrante.id)
-              const resultados = trechosDo.length > 0 ? calcularResultados(hidrante, trechosDo) : []
+              const resultados = trechosDo.length > 0 ? calcularResultados(hidrante, resolverTrechos(trechosDo)) : []
 
               return (
                 <Card key={hidrante.id} className="border-border shadow-sm">
@@ -1578,6 +1650,41 @@ export default function Projeto() {
               <div className="col-span-2 space-y-1.5">
                 <Label>Nome *</Label>
                 <Input value={trechoForm.nome} onChange={e => updateTrechoForm('nome', e.target.value)} required placeholder="Ex: Trecho 1 — Saída bomba" />
+              </div>
+
+              {/* Vincular a trecho compartilhado */}
+              <div className="col-span-2 space-y-1.5">
+                <Label className="text-xs flex items-center gap-1.5">
+                  🔗 Vincular a trecho (compartilhar dados)
+                  <span className="text-[10px] text-muted-foreground font-normal">— opcional</span>
+                </Label>
+                <Select
+                  value={String((trechoForm as any).trecho_ref_id ?? '')}
+                  onValueChange={v => updateTrechoForm('trecho_ref_id' as any, v ? parseInt(v) : null)}
+                >
+                  <SelectTrigger className="text-xs h-8">
+                    <SelectValue placeholder="Sem vínculo (independente)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Sem vínculo (independente)</SelectItem>
+                    {(trechos || [])
+                      .filter(t => t.id !== (editTrecho?.id ?? -1))
+                      .map(t => {
+                        const hid = hidrantes?.find(h => h.id === t.hidrante_id)
+                        return (
+                          <SelectItem key={t.id} value={String(t.id)}>
+                            [{hid?.nome ?? '?'}] {t.nome} ({t.tipo_trecho}, DN{t.bitola})
+                          </SelectItem>
+                        )
+                      })
+                    }
+                  </SelectContent>
+                </Select>
+                {(trechoForm as any).trecho_ref_id && (
+                  <p className="text-[11px] text-blue-600 dark:text-blue-400">
+                    ⚡ Este trecho usará os dados do trecho pai. Ao editar o pai, este atualiza automaticamente.
+                  </p>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label>Tipo</Label>
