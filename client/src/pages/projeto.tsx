@@ -853,21 +853,22 @@ export default function Projeto() {
     const trechosDo = expandirTrechos(trechosBrutos)
 
     // ── 3 Pontos da Curva da Bomba ────────────────────────────────────────────
-    // Ponto 1: Q adotado (vazao_minima * num_hidrantes), H = pressao acumulada
-    const Q1 = hidrante.vazao_minima
+    // Q unitário = vazao_minima por hidrante
+    // Q total = vazao_minima × número de hidrantes simultâneos (todos do projeto)
+    const numHidSimult = (hidrantes ?? []).length || 1
+    const Q1 = hidrante.vazao_minima * numHidSimult   // Ponto 1: Q adotado total
     const res1 = calcularResultados(hidrante, resolverTrechos(trechosBrutos))
     const H1 = res1[res1.length - 1]?.pressao_acumulada ?? 0
 
-    // Ponto 2: media de Q1 e Q3
+    // Ponto 3: Q + fator_seguranca%; Ponto 2: média
     const Q3 = Q1 * hidrante.fator_seguranca
     const Q2 = (Q1 + Q3) / 2
-    // Calcular H2 interpolando: usamos hidrante com vazao=Q2
-    const hidr2 = { ...hidrante, vazao_minima: Q2 }
+    // H2 e H3: recalcular com vazão unitária proporcional (Q/numHidSimult)
+    const hidr2 = { ...hidrante, vazao_minima: Q2 / numHidSimult }
     const res2 = calcularResultados(hidr2, resolverTrechos(trechosBrutos))
     const H2 = res2[res2.length - 1]?.pressao_acumulada ?? 0
 
-    // Ponto 3: Q + fator_seguranca
-    const hidr3 = { ...hidrante, vazao_minima: Q3 }
+    const hidr3 = { ...hidrante, vazao_minima: Q3 / numHidSimult }
     const res3 = calcularResultados(hidr3, resolverTrechos(trechosBrutos))
     const H3 = res3[res3.length - 1]?.pressao_acumulada ?? 0
 
@@ -1214,6 +1215,54 @@ export default function Projeto() {
       doc.text(`Pag. ${i} / ${totalPages}`, W - 30, 12)
     }
 
+    // ── DADOS DA BOMBA ──────────────────────────────────────────────────────
+    if (hidrante.bomba_modelo || hidrante.bomba_marca || hidrante.bomba_potencia || hidrante.bomba_vazao_nominal) {
+      // Checar espaço na última página
+      const pgAtual = doc.internal.getCurrentPageInfo().pageNumber
+      doc.setPage(pgAtual)
+      const paginaAltura = 210 // A4 landscape height
+      if (y > paginaAltura - 40) {
+        doc.addPage()
+        drawHeader(doc.internal.getNumberOfPages(), 0)
+        drawSubHeader()
+        y = 38
+      }
+
+      y += 4
+      doc.setFillColor(26, 58, 107)
+      doc.rect(10, y, W - 20, 6, 'F')
+      doc.setTextColor(255, 255, 255)
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(9)
+      doc.text('DADOS DA BOMBA', 15, y + 4.5)
+      y += 8
+
+      const bombaInfo: [string, string][] = [
+        ['Modelo', hidrante.bomba_modelo || '—'],
+        ['Marca / Fabricante', hidrante.bomba_marca || '—'],
+        ['Vazão Nominal', hidrante.bomba_vazao_nominal ? `${hidrante.bomba_vazao_nominal} l/min` : '—'],
+        ['Pressão Nominal', hidrante.bomba_pressao_nominal ? `${hidrante.bomba_pressao_nominal} mca` : '—'],
+        ['Potência', hidrante.bomba_potencia ? `${hidrante.bomba_potencia} CV` : '—'],
+        ['Rotação (RPM)', hidrante.bomba_rpm ? `${hidrante.bomba_rpm} rpm` : '—'],
+      ]
+      if (hidrante.bomba_obs) bombaInfo.push(['Observações', hidrante.bomba_obs])
+
+      autoTable(doc, {
+        startY: y,
+        head: [['Campo', 'Valor']],
+        body: bombaInfo,
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [26, 58, 107] },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 55 },
+          1: { cellWidth: 120 },
+        },
+        margin: { left: 10, right: 10 },
+        tableWidth: 175,
+      })
+      y = (doc as any).lastAutoTable.finalY + 6
+    }
+
     doc.save(`Memorial_${projeto?.nome || 'projeto'}_${hidrante.nome}.pdf`)
   }
 
@@ -1432,11 +1481,12 @@ export default function Projeto() {
                         {resultados.length === 0 ? (
                           <p className="text-sm text-muted-foreground py-4 text-center">Adicione trechos para ver os resultados.</p>
                         ) : (() => {
-                          const Q1 = hidrante.vazao_minima
+                          const numHid = (hidrantes ?? []).length || 1
+                          const Q1 = hidrante.vazao_minima * numHid
                           const Q3 = Q1 * hidrante.fator_seguranca
                           const Q2 = (Q1 + Q3) / 2
-                          const hidr2 = { ...hidrante, vazao_minima: Q2 }
-                          const hidr3 = { ...hidrante, vazao_minima: Q3 }
+                          const hidr2 = { ...hidrante, vazao_minima: Q2 / numHid }
+                          const hidr3 = { ...hidrante, vazao_minima: Q3 / numHid }
                           const res2 = trechosDo.length > 0 ? calcularResultados(hidr2, trechosDo) : []
                           const res3 = trechosDo.length > 0 ? calcularResultados(hidr3, trechosDo) : []
                           const H1 = resultados[resultados.length - 1]?.pressao_acumulada ?? 0
