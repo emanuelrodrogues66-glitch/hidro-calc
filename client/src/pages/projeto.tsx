@@ -1051,11 +1051,6 @@ export default function Projeto() {
           r.pressao_acumulada.toFixed(4),
         ] : ['—','—','—','—','—']
 
-        // H din = Hf acumulado + altura estatica acumulada
-        const hdin1 = r1 ? (r1.pressao_acumulada) : 0
-        const hdin2 = r2 ? (r2.pressao_acumulada) : 0
-        const hdin3 = r3 ? (r3.pressao_acumulada) : 0
-
         return [
           t.nome,
           t.tipo_trecho === 'requinte' ? '—' : dn,
@@ -1069,21 +1064,18 @@ export default function Projeto() {
           r1?.hf_acumulado.toFixed(4) ?? '—',
           r1?.hest_acumulado.toFixed(4) ?? '—',
           r1?.pressao_acumulada.toFixed(4) ?? '—',
-          hdin1.toFixed(4),
           r2?.vazao.toFixed(0) ?? '—',
           r2 && r2.tipo !== 'requinte' ? r2.perda_carga_unitaria.toFixed(6) : '—',
           r2?.perda_carga.toFixed(4) ?? '—',
           r2?.hf_acumulado.toFixed(4) ?? '—',
           r2?.hest_acumulado.toFixed(4) ?? '—',
           r2?.pressao_acumulada.toFixed(4) ?? '—',
-          hdin2.toFixed(4),
           r3?.vazao.toFixed(0) ?? '—',
           r3 && r3.tipo !== 'requinte' ? r3.perda_carga_unitaria.toFixed(6) : '—',
           r3?.perda_carga.toFixed(4) ?? '—',
           r3?.hf_acumulado.toFixed(4) ?? '—',
           r3?.hest_acumulado.toFixed(4) ?? '—',
           r3?.pressao_acumulada.toFixed(4) ?? '—',
-          hdin3.toFixed(4),
         ]
       }),
       styles: { fontSize: 7, cellPadding: 1.5 },
