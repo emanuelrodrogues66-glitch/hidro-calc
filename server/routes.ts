@@ -2,14 +2,16 @@ import type { Express } from "express";
 import { createServer } from 'node:http';
 import type { Server } from 'node:http';
 import { storage } from "./storage";
+import { hotmartWebhookHandler } from "./hotmart-webhook";
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // prefix all routes with /api
-  // use storage to perform CRUD operations on the storage interface
-  // e.g. app.get("/api/items", async (_req, res) => { ... })
+
+  // ── Webhook Hotmart ──────────────────────────────────────────────────────────
+  // URL a configurar na Hotmart: https://SEU_DOMINIO/api/webhook/hotmart
+  app.post('/api/webhook/hotmart', hotmartWebhookHandler)
 
   return httpServer;
 }
