@@ -21,7 +21,7 @@ import { useHashLocation } from 'wouter/use-hash-location'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth-context'
-import { calcularResultados, calcCE, calcCETotal, parsearCSVRevit, mapearFamiliaParaTipo, TIPOS_PECAS, DNS_DISPONIVEIS, type Hidrante, type Trecho, type Peca } from '@/lib/calc'
+import { calcularResultados, calcCE, calcCETotal, fmtVelocidade, velocidadeExcedida, V_MAX_TUBULACAO, type ResultadoLinha, parsearCSVRevit, mapearFamiliaParaTipo, TIPOS_PECAS, DNS_DISPONIVEIS, type Hidrante, type Trecho, type Peca } from '@/lib/calc'
 import { LogoIcon } from '@/components/logo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -1008,29 +1008,44 @@ export default function Projeto() {
     doc.text('PLANILHA DE CALCULO POR TRECHOS', 15, y + 4.5)
     y += 7
 
-    // Tabela com 3 pontos
-    const baseHead = ['Trecho', 'O (mm)', 'L real (m)', 'C.E. (m)', 'L total (m)', 'H est. (mca)']
-    const pHead = (lbl: string) => ['Q (l/min)', 'J (m/m)', 'Hf trecho', 'Hf acum.', 'H.Est acum.', 'H din. (mca)']
+    // Tabela com 3 pontos — cada ponto: Q, V, J, Hf, Hf acum., H.Est, H din.
+    const SUB_HEAD = ['Q (l/min)', 'V (m/s)', 'J (m/m)', 'Hf trecho', 'Hf acum.', 'H.Est acum.', 'H din. (mca)']
+    const N_SUB = SUB_HEAD.length
+    const C1: [number, number, number] = [50, 90, 160]
+    const C2: [number, number, number] = [70, 110, 180]
+    const C3: [number, number, number] = [200, 60, 40]
+    const WHITE: [number, number, number] = [255, 255, 255]
+    const subHead = (fill: [number, number, number]) =>
+      SUB_HEAD.map(h => ({ content: h, styles: { halign: 'center' as const, fillColor: fill, textColor: WHITE, fontSize: 6 } }))
+    const baseCell = (content: string) =>
+      ({ content, rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const, fillColor: [26, 58, 107] as [number, number, number], textColor: WHITE } })
+
+    const pRow = (r?: ResultadoLinha) => r ? [
+      r.vazao.toFixed(0),
+      fmtVelocidade(r),
+      r.tipo === 'requinte' ? '—' : r.perda_carga_unitaria.toFixed(6),
+      r.perda_carga.toFixed(4),
+      r.hf_acumulado.toFixed(4),
+      r.hest_acumulado.toFixed(4),
+      r.pressao_acumulada.toFixed(4),
+    ] : Array(N_SUB).fill('—')
+
+    // Índices das colunas de velocidade (6 colunas base + offset do ponto + 1)
+    const colsVel = [0, 1, 2].map(p => 6 + p * N_SUB + 1)
+    const resPorPonto = [res1, res2, res3]
+    let haVelExcedida = false
 
     autoTable(doc, {
       startY: y,
       head: [
         [
-          { content: 'Trecho', rowSpan: 2, styles: { valign: 'middle', halign: 'center', fillColor: [26, 58, 107], textColor: [255,255,255] } },
-          { content: 'O (mm)', rowSpan: 2, styles: { valign: 'middle', halign: 'center', fillColor: [26, 58, 107], textColor: [255,255,255] } },
-          { content: 'L real (m)', rowSpan: 2, styles: { valign: 'middle', halign: 'center', fillColor: [26, 58, 107], textColor: [255,255,255] } },
-          { content: 'C.E. (m)', rowSpan: 2, styles: { valign: 'middle', halign: 'center', fillColor: [26, 58, 107], textColor: [255,255,255] } },
-          { content: 'L total (m)', rowSpan: 2, styles: { valign: 'middle', halign: 'center', fillColor: [26, 58, 107], textColor: [255,255,255] } },
-          { content: 'H est. (mca)', rowSpan: 2, styles: { valign: 'middle', halign: 'center', fillColor: [26, 58, 107], textColor: [255,255,255] } },
-          { content: `1o Ponto (Q adotado) — Q = ${Q1.toFixed(0)} l/min`, colSpan: 5, styles: { halign: 'center', fillColor: [50, 90, 160], textColor: [255,255,255] } },
-          { content: `2o Ponto (media Q1+Q3) — Q = ${Q2.toFixed(0)} l/min`, colSpan: 5, styles: { halign: 'center', fillColor: [70, 110, 180], textColor: [255,255,255] } },
-          { content: `3o Ponto (Q +${((hidrante.fator_seguranca-1)*100).toFixed(0)}% seg.) — Q = ${Q3.toFixed(0)} l/min`, colSpan: 5, styles: { halign: 'center', fillColor: [200, 60, 40], textColor: [255,255,255] } },
+          baseCell('Trecho'), baseCell('O (mm)'), baseCell('L real (m)'),
+          baseCell('C.E. (m)'), baseCell('L total (m)'), baseCell('H est. (mca)'),
+          { content: `1o Ponto (Q adotado) — Q = ${Q1.toFixed(0)} l/min`, colSpan: N_SUB, styles: { halign: 'center', fillColor: C1, textColor: WHITE } },
+          { content: `2o Ponto (media Q1+Q3) — Q = ${Q2.toFixed(0)} l/min`, colSpan: N_SUB, styles: { halign: 'center', fillColor: C2, textColor: WHITE } },
+          { content: `3o Ponto (Q +${((hidrante.fator_seguranca-1)*100).toFixed(0)}% seg.) — Q = ${Q3.toFixed(0)} l/min`, colSpan: N_SUB, styles: { halign: 'center', fillColor: C3, textColor: WHITE } },
         ],
-        [
-          ...['Q (l/min)', 'J (m/m)', 'Hf trecho', 'Hf acum.', 'H.Est acum.', 'H din. (mca)'].map(h => ({ content: h, styles: { halign: 'center' as const, fillColor: [50, 90, 160] as [number,number,number], textColor: [255,255,255] as [number,number,number], fontSize: 6.5 } })),
-          ...['Q (l/min)', 'J (m/m)', 'Hf trecho', 'Hf acum.', 'H.Est acum.', 'H din. (mca)'].map(h => ({ content: h, styles: { halign: 'center' as const, fillColor: [70, 110, 180] as [number,number,number], textColor: [255,255,255] as [number,number,number], fontSize: 6.5 } })),
-          ...['Q (l/min)', 'J (m/m)', 'Hf trecho', 'Hf acum.', 'H.Est acum.', 'H din. (mca)'].map(h => ({ content: h, styles: { halign: 'center' as const, fillColor: [200, 60, 40] as [number,number,number], textColor: [255,255,255] as [number,number,number], fontSize: 6.5 } })),
-        ],
+        [...subHead(C1), ...subHead(C2), ...subHead(C3)],
       ],
       body: trechosDo.map((t, i) => {
         const r1 = res1[i], r2 = res2[i], r3 = res3[i]
@@ -1041,15 +1056,7 @@ export default function Projeto() {
         const ce = r1?.comprimento_equiv.toFixed(4) ?? '—'
         const ltotal = r1?.comprimento_total.toFixed(4) ?? '—'
         const hest = r1?.altura_estatica.toFixed(2) ?? '—'
-
-        const pRow = (r: typeof r1) => r ? [
-          r.vazao.toFixed(0),
-          r.tipo === 'requinte' ? '—' : r.perda_carga_unitaria.toFixed(6),
-          r.perda_carga.toFixed(4),
-          r.hf_acumulado.toFixed(4),
-          r.hest_acumulado.toFixed(4),
-          r.pressao_acumulada.toFixed(4),
-        ] : ['—','—','—','—','—']
+        if ([r1, r2, r3].some(r => velocidadeExcedida(r))) haVelExcedida = true
 
         return [
           t.nome,
@@ -1058,38 +1065,46 @@ export default function Projeto() {
           t.tipo_trecho === 'requinte' ? '—' : ce,
           t.tipo_trecho === 'requinte' ? '—' : ltotal,
           hest,
-          r1?.vazao.toFixed(0) ?? '—',
-          r1 && r1.tipo !== 'requinte' ? r1.perda_carga_unitaria.toFixed(6) : '—',
-          r1?.perda_carga.toFixed(4) ?? '—',
-          r1?.hf_acumulado.toFixed(4) ?? '—',
-          r1?.hest_acumulado.toFixed(4) ?? '—',
-          r1?.pressao_acumulada.toFixed(4) ?? '—',
-          r2?.vazao.toFixed(0) ?? '—',
-          r2 && r2.tipo !== 'requinte' ? r2.perda_carga_unitaria.toFixed(6) : '—',
-          r2?.perda_carga.toFixed(4) ?? '—',
-          r2?.hf_acumulado.toFixed(4) ?? '—',
-          r2?.hest_acumulado.toFixed(4) ?? '—',
-          r2?.pressao_acumulada.toFixed(4) ?? '—',
-          r3?.vazao.toFixed(0) ?? '—',
-          r3 && r3.tipo !== 'requinte' ? r3.perda_carga_unitaria.toFixed(6) : '—',
-          r3?.perda_carga.toFixed(4) ?? '—',
-          r3?.hf_acumulado.toFixed(4) ?? '—',
-          r3?.hest_acumulado.toFixed(4) ?? '—',
-          r3?.pressao_acumulada.toFixed(4) ?? '—',
+          ...pRow(r1),
+          ...pRow(r2),
+          ...pRow(r3),
         ]
       }),
-      styles: { fontSize: 7, cellPadding: 1.5 },
+      styles: { fontSize: 6, cellPadding: { top: 1.2, bottom: 1.2, left: 0.6, right: 0.6 }, halign: 'center' },
+      bodyStyles: { overflow: 'visible' },
       alternateRowStyles: { fillColor: [245, 248, 252] },
       columnStyles: {
-        0: { cellWidth: 28 },
-        1: { halign: 'center', cellWidth: 14 },
-        2: { halign: 'center', cellWidth: 14 },
-        3: { halign: 'center', cellWidth: 14 },
-        4: { halign: 'center', cellWidth: 14 },
-        5: { halign: 'center', cellWidth: 14 },
+        0: { cellWidth: 24, halign: 'left' },
+        1: { cellWidth: 9 },
+        2: { cellWidth: 10 },
+        3: { cellWidth: 10 },
+        4: { cellWidth: 11 },
+        5: { cellWidth: 10 },
+      },
+      didParseCell: (data: any) => {
+        if (data.section !== 'body') return
+        const p = colsVel.indexOf(data.column.index)
+        if (p >= 0 && velocidadeExcedida(resPorPonto[p][data.row.index])) {
+          data.cell.styles.textColor = [200, 30, 30]
+          data.cell.styles.fontStyle = 'bold'
+        }
       },
       margin: { left: 10, right: 10 },
     })
+
+    // Nota sobre a velocidade
+    {
+      const yNota = (doc as any).lastAutoTable.finalY + 4
+      doc.setFont('helvetica', 'italic')
+      doc.setFontSize(7)
+      doc.setTextColor(90, 90, 90)
+      doc.text(`V = Q / A, com A calculada pelo diametro interno do tubo/mangueira. Limite adotado para tubulacao: V <= ${V_MAX_TUBULACAO} m/s.`, 12, yNota)
+      if (haVelExcedida) {
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(200, 30, 30)
+        doc.text(`ATENCAO: ha trecho(s) de tubulacao com velocidade acima de ${V_MAX_TUBULACAO} m/s (destacados em vermelho).`, 12, yNota + 4)
+      }
+    }
 
     // ── PAGINAS SEGUINTES: Detalhamento por trecho ────────────────────────────
     doc.addPage()
@@ -1310,7 +1325,7 @@ export default function Projeto() {
                 doc.text(`Hidrante: ${h.nome}  |  Vazão: ${h.vazao_minima} l/min  |  H din. final: ${(res[res.length-1]?.pressao_acumulada ?? 0).toFixed(2)} mca  |  Emitido: ${new Date().toLocaleDateString('pt-BR')}`, W / 2, 17, { align: 'center' })
                 ;(doc as any).autoTable({
                   startY: 26,
-                  head: [['Trecho','Tipo','DN','L.Real','L.Equiv','L.Total','H.Est','Q(l/min)','J(m/m)','hf(m)','Hf acum.','H din.']],
+                  head: [['Trecho','Tipo','DN','L.Real','L.Equiv','L.Total','H.Est','Q(l/min)','V(m/s)','J(m/m)','hf(m)','Hf acum.','H din.']],
                   body: tExp.map((t: any, i: number) => {
                     const r = res[i]
                     return [
@@ -1320,6 +1335,7 @@ export default function Projeto() {
                       (r?.comprimento_total??0).toFixed(2),
                       (t.altura_estatica||0).toFixed(2),
                       (r?.vazao??0).toFixed(0),
+                      fmtVelocidade(r),
                       (r?.perda_carga_unitaria??0).toFixed(4),
                       (r?.perda_carga??0).toFixed(4),
                       (r?.hf_acumulado??0).toFixed(4),
@@ -1333,8 +1349,7 @@ export default function Projeto() {
                 })
               }
               if (primeiro) { alert('Nenhum hidrante com trechos cadastrados.'); return }
-              const proj = projetos?.find((p: any) => p.id === projetoId)
-              doc.save(`Memorial_${(proj?.nome ?? 'projeto').replace(/[^a-zA-Z0-9]/g, '_')}_todos.pdf`)
+              doc.save(`Memorial_${(projeto?.nome ?? 'projeto').replace(/[^a-zA-Z0-9]/g, '_')}_todos.pdf`)
             }}>
               📄 <span className="hidden sm:inline">Exportar todos</span>
             </Button>
@@ -1534,14 +1549,14 @@ export default function Projeto() {
                                     <th className="text-center py-2 px-2 font-medium" rowSpan={2}>C.E.</th>
                                     <th className="text-center py-2 px-2 font-medium" rowSpan={2}>L. Total</th>
                                     <th className="text-center py-2 px-2 font-medium" rowSpan={2}>H. Est</th>
-                                    <th className="text-center py-2 px-1 font-medium bg-blue-700" colSpan={4}>1º Ponto — Q={Q1.toFixed(0)}</th>
-                                    <th className="text-center py-2 px-1 font-medium bg-blue-600" colSpan={4}>2º Ponto — Q={Q2.toFixed(0)}</th>
-                                    <th className="text-center py-2 px-1 font-medium bg-red-600" colSpan={4}>3º Ponto — Q={Q3.toFixed(0)}</th>
+                                    <th className="text-center py-2 px-1 font-medium bg-blue-700" colSpan={6}>1º Ponto — Q={Q1.toFixed(0)}</th>
+                                    <th className="text-center py-2 px-1 font-medium bg-blue-600" colSpan={6}>2º Ponto — Q={Q2.toFixed(0)}</th>
+                                    <th className="text-center py-2 px-1 font-medium bg-red-600" colSpan={6}>3º Ponto — Q={Q3.toFixed(0)}</th>
                                   </tr>
                                   <tr className="text-[10px]">
-                                    {['J','hf','Hf acum.','H.Est ac.','H din.'].map(h => <th key={`p1${h}`} className="py-1 px-1 text-center bg-blue-700/80 font-normal">{h}</th>)}
-                                    {['J','hf','Hf acum.','H.Est ac.','H din.'].map(h => <th key={`p2${h}`} className="py-1 px-1 text-center bg-blue-600/80 font-normal">{h}</th>)}
-                                    {['J','hf','Hf acum.','H.Est ac.','H din.'].map(h => <th key={`p3${h}`} className="py-1 px-1 text-center bg-red-600/80 font-normal">{h}</th>)}
+                                    {['V (m/s)','J','hf','Hf acum.','H.Est ac.','H din.'].map(h => <th key={`p1${h}`} className="py-1 px-1 text-center bg-blue-700/80 font-normal">{h}</th>)}
+                                    {['V (m/s)','J','hf','Hf acum.','H.Est ac.','H din.'].map(h => <th key={`p2${h}`} className="py-1 px-1 text-center bg-blue-600/80 font-normal">{h}</th>)}
+                                    {['V (m/s)','J','hf','Hf acum.','H.Est ac.','H din.'].map(h => <th key={`p3${h}`} className="py-1 px-1 text-center bg-red-600/80 font-normal">{h}</th>)}
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -1558,18 +1573,21 @@ export default function Projeto() {
                                       <td className="py-1.5 px-2 text-center">{r.tipo === 'requinte' ? '—' : r.comprimento_total.toFixed(4)}</td>
                                       <td className="py-1.5 px-2 text-center">{r.altura_estatica.toFixed(2)}</td>
                                       {/* Ponto 1 */}
+                                      <td className={`py-1.5 px-1 text-center ${velocidadeExcedida(r) ? 'text-red-600 dark:text-red-400 font-bold' : 'text-blue-700 dark:text-blue-300'}`} title={velocidadeExcedida(r) ? `Velocidade acima de ${V_MAX_TUBULACAO} m/s` : undefined}>{fmtVelocidade(r)}</td>
                                       <td className="py-1.5 px-1 text-center text-blue-700 dark:text-blue-300">{r.tipo === 'requinte' ? '—' : r.perda_carga_unitaria.toFixed(6)}</td>
                                       <td className="py-1.5 px-1 text-center text-blue-700 dark:text-blue-300">{r.perda_carga.toFixed(4)}</td>
                                       <td className="py-1.5 px-1 text-center text-blue-700 dark:text-blue-300">{r.hf_acumulado.toFixed(4)}</td>
                                       <td className="py-1.5 px-1 text-center text-blue-700 dark:text-blue-300">{r.hest_acumulado.toFixed(4)}</td>
                                       <td className="py-1.5 px-1 text-center font-semibold text-blue-800 dark:text-blue-200">{r.pressao_acumulada.toFixed(4)}</td>
                                       {/* Ponto 2 */}
+                                      <td className={`py-1.5 px-1 text-center ${velocidadeExcedida(r2i) ? 'text-red-600 dark:text-red-400 font-bold' : 'text-blue-600 dark:text-blue-400'}`} title={velocidadeExcedida(r2i) ? `Velocidade acima de ${V_MAX_TUBULACAO} m/s` : undefined}>{fmtVelocidade(r2i)}</td>
                                       <td className="py-1.5 px-1 text-center text-blue-600 dark:text-blue-400">{r2i && r2i.tipo !== 'requinte' ? r2i.perda_carga_unitaria.toFixed(6) : '—'}</td>
                                       <td className="py-1.5 px-1 text-center text-blue-600 dark:text-blue-400">{r2i?.perda_carga.toFixed(4) ?? '—'}</td>
                                       <td className="py-1.5 px-1 text-center text-blue-600 dark:text-blue-400">{r2i?.hf_acumulado.toFixed(4) ?? '—'}</td>
                                       <td className="py-1.5 px-1 text-center text-blue-600 dark:text-blue-400">{r2i?.hest_acumulado.toFixed(4) ?? '—'}</td>
                                       <td className="py-1.5 px-1 text-center font-semibold text-blue-700 dark:text-blue-300">{r2i?.pressao_acumulada.toFixed(4) ?? '—'}</td>
                                       {/* Ponto 3 */}
+                                      <td className={`py-1.5 px-1 text-center ${velocidadeExcedida(r3i) ? 'text-red-600 dark:text-red-400 font-bold' : 'text-red-600 dark:text-red-400'}`} title={velocidadeExcedida(r3i) ? `Velocidade acima de ${V_MAX_TUBULACAO} m/s` : undefined}>{fmtVelocidade(r3i)}</td>
                                       <td className="py-1.5 px-1 text-center text-red-600 dark:text-red-400">{r3i && r3i.tipo !== 'requinte' ? r3i.perda_carga_unitaria.toFixed(6) : '—'}</td>
                                       <td className="py-1.5 px-1 text-center text-red-600 dark:text-red-400">{r3i?.perda_carga.toFixed(4) ?? '—'}</td>
                                       <td className="py-1.5 px-1 text-center text-red-600 dark:text-red-400">{r3i?.hf_acumulado.toFixed(4) ?? '—'}</td>
@@ -1584,13 +1602,13 @@ export default function Projeto() {
                                     <td colSpan={6} className="py-2 px-2 text-xs font-semibold text-muted-foreground">
                                       Pressão total na bomba (H din. final):
                                     </td>
-                                    <td colSpan={4} className="py-2 px-2 text-center font-bold text-blue-700 dark:text-blue-300 text-xs">
+                                    <td colSpan={6} className="py-2 px-2 text-center font-bold text-blue-700 dark:text-blue-300 text-xs">
                                       H1 = {H1.toFixed(4)} mca
                                     </td>
-                                    <td colSpan={4} className="py-2 px-2 text-center font-bold text-blue-600 dark:text-blue-400 text-xs">
+                                    <td colSpan={6} className="py-2 px-2 text-center font-bold text-blue-600 dark:text-blue-400 text-xs">
                                       H2 = {H2.toFixed(4)} mca
                                     </td>
-                                    <td colSpan={4} className="py-2 px-2 text-center font-bold text-red-700 dark:text-red-300 text-xs">
+                                    <td colSpan={6} className="py-2 px-2 text-center font-bold text-red-700 dark:text-red-300 text-xs">
                                       H3 = {H3.toFixed(4)} mca
                                     </td>
                                   </tr>

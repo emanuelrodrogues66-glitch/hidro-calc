@@ -239,6 +239,20 @@ export function calcVelocidade(Q: number, D: number): number {
   return Qms / A
 }
 
+/** Velocidade máxima admitida na tubulação (m/s) — usada para destacar trechos no memorial */
+export const V_MAX_TUBULACAO = 5
+
+/** Formata a velocidade de uma linha de resultado ('—' para requinte/sem vazão) */
+export function fmtVelocidade(r?: { tipo: string; velocidade: number }): string {
+  if (!r || r.tipo === 'requinte' || !(r.velocidade > 0)) return '—'
+  return r.velocidade.toFixed(2)
+}
+
+/** true se o trecho é tubulação e a velocidade excede o limite */
+export function velocidadeExcedida(r?: { tipo: string; velocidade: number }): boolean {
+  return !!r && r.tipo === 'normal' && r.velocidade > V_MAX_TUBULACAO
+}
+
 // ─── Calcular Resultados Completos ────────────────────────────────────────────
 
 export function calcularResultados(
